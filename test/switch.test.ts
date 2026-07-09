@@ -57,4 +57,37 @@ describe('globalSwitch', () => {
     await globalSwitch({ name: 'work', type: 'login', env: {} }, t.deps as any)
     expect(t.savedRef().env?.CLAUDE_CODE_USE_BEDROCK).toBeUndefined()
   })
+
+  it('does not touch settings/active if writeLiveCredential (login) fails', async () => {
+    const t = baseDeps({ writeLiveCredential: vi.fn().mockRejectedValue(new Error('keychain locked')) })
+    await expect(globalSwitch({ name: 'work', type: 'login', env: {} }, t.deps as any)).rejects.toThrow('keychain locked')
+    expect(t.deps.saveSettings).not.toHaveBeenCalled()
+    expect(t.deps.writeActive).not.toHaveBeenCalled()
+  })
+
+  it('does not touch settings/active if neutralizeLiveCredential (api-key) fails', async () => {
+    const t = baseDeps({ neutralizeLiveCredential: vi.fn().mockRejectedValue(new Error('keychain locked')) })
+    await expect(globalSwitch({ name: 'k', type: 'api-key', env: {} }, t.deps as any)).rejects.toThrow('keychain locked')
+    expect(t.deps.saveSettings).not.toHaveBeenCalled()
+    expect(t.deps.writeActive).not.toHaveBeenCalled()
+  })
+
+  it('does not touch settings/active if neutralizeLiveCredential (bedrock) fails', async () => {
+    const t = baseDeps({ neutralizeLiveCredential: vi.fn().mockRejectedValue(new Error('keychain locked')) })
+    await expect(globalSwitch({ name: 'bd', type: 'bedrock', env: { CLAUDE_CODE_USE_BEDROCK: '1', AWS_PROFILE: 'p', AWS_REGION: 'us-east-1' } }, t.deps as any)).rejects.toThrow('keychain locked')
+    expect(t.deps.saveSettings).not.toHaveBeenCalled()
+    expect(t.deps.writeActive).not.toHaveBeenCalled()
+  })
+
+  it('gives an actionable error message if saveSettings fails after credential was applied', async () => {
+    const t = baseDeps({ saveSettings: vi.fn().mockImplementation(() => { throw new Error('disk full') }) })
+    await expect(globalSwitch({ name: 'work', type: 'login', env: {} }, t.deps as any)).rejects.toThrow(/backup|inconsistent|manual/i)
+    expect(t.deps.writeLiveCredential).toHaveBeenCalled()
+  })
+
+  it('gives an actionable error message if writeActive fails after credential was applied', async () => {
+    const t = baseDeps({ writeActive: vi.fn().mockImplementation(() => { throw new Error('disk full') }) })
+    await expect(globalSwitch({ name: 'work', type: 'login', env: {} }, t.deps as any)).rejects.toThrow(/backup|inconsistent|manual/i)
+    expect(t.deps.writeLiveCredential).toHaveBeenCalled()
+  })
 })

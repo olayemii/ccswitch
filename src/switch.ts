@@ -46,9 +46,20 @@ export async function globalSwitch(profile: Profile, deps: SwitchDeps): Promise<
     }
   }
 
-  const current = deps.loadSettings(deps.paths.settingsFile)
-  const { settings, managedKeys } = patchSettings(current, desired, prevManaged)
-  deps.saveSettings(deps.paths.settingsFile, settings, deps.now)
+  // Apply the fragile credential step first. If this throws, nothing on disk
+  // has changed yet, so the previous profile remains fully active.
   await applyCredential()
-  deps.writeActive({ name: profile.name, managedKeys }, deps.paths)
+
+  try {
+    const current = deps.loadSettings(deps.paths.settingsFile)
+    const { settings, managedKeys } = patchSettings(current, desired, prevManaged)
+    deps.saveSettings(deps.paths.settingsFile, settings, deps.now)
+    deps.writeActive({ name: profile.name, managedKeys }, deps.paths)
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err)
+    throw new Error(
+      `Credential switched to '${profile.name}' but settings.json/active.json may now be inconsistent: ${reason}. ` +
+      `A timestamped backup of the previous settings.json (settings.json.bak.${deps.now}) may exist — inspect it and restore manually if needed.`,
+    )
+  }
 }
