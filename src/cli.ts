@@ -5,9 +5,14 @@ import { getSecret, deleteSecret } from './secretStore.js'
 import { buildEnvExport, buildEnvUnset } from './envexport.js'
 import { loadSettings, saveSettings } from './settings.js'
 import { writeLiveCredential, neutralizeLiveCredential } from './credentials.js'
-import { writeApiKeyHelper } from './helpers.js'
+import { writeApiKeyHelper, captureOAuthToken } from './helpers.js'
 import { globalSwitch } from './switch.js'
 import { rmSync, existsSync } from 'node:fs'
+import * as clack from '@clack/prompts'
+import { setSecret } from './secretStore.js'
+import { readLiveCredential } from './credentials.js'
+import { saveProfile } from './profiles.js'
+import { isAuthType, type Profile } from './types.js'
 
 function nowIso(): string {
   // Injected-free deterministic-ish timestamp; Date is allowed at runtime (not in workflow scripts).
@@ -80,13 +85,109 @@ export async function runCli(argv: string[]): Promise<number> {
       )
     })
 
+  program
+    .command('save <name>')
+    .requiredOption('--type <type>', 'login | api-key | bedrock')
+    .option('--force', 'overwrite existing profile')
+    .description('snapshot current live state into a profile')
+    .action(async (name: string, opts: { type: string; force?: boolean }) => {
+      if (!isAuthType(opts.type)) throw new Error(`Invalid --type '${opts.type}'`)
+      if (profileExists(name, p) && !opts.force) throw new Error(`Profile '${name}' exists. Use --force.`)
+      const profile: Profile = { name, type: opts.type, env: {} }
+      if (opts.type === 'login') {
+        const cred = await readLiveCredential(plat, p)
+        if (!cred) throw new Error('No live login found. Run /login in Claude Code first.')
+        await setSecret(name, cred, plat, p)
+      } else if (opts.type === 'api-key') {
+        const settings = loadSettings(p.settingsFile)
+        const key = settings?.env?.ANTHROPIC_API_KEY
+        if (!key) throw new Error('No ANTHROPIC_API_KEY in settings to snapshot.')
+        await setSecret(name, key, plat, p)
+      } else {
+        const settings = loadSettings(p.settingsFile)
+        profile.env = {
+          CLAUDE_CODE_USE_BEDROCK: settings?.env?.CLAUDE_CODE_USE_BEDROCK ?? '1',
+          AWS_PROFILE: settings?.env?.AWS_PROFILE ?? '',
+          AWS_REGION: settings?.env?.AWS_REGION ?? '',
+        }
+      }
+      saveProfile(profile, p)
+      process.stdout.write(`Saved profile '${name}'.\n`)
+    })
+
+  program
+    .command('token <name>')
+    .description('capture a long-lived OAuth token for a login profile')
+    .action(async (name: string) => {
+      if (!profileExists(name, p)) throw new Error(`Unknown profile: ${name}. See: ccswitch list`)
+      const profile = loadProfile(name, p)
+      if (profile.type !== 'login') throw new Error(`Profile '${name}' is not a login profile.`)
+      const token = await captureOAuthToken()
+      await setSecret(name, token, plat, p)
+      saveProfile({ ...profile, hasToken: true }, p)
+      process.stdout.write(`Captured OAuth token for '${name}'. Per-shell login now works.\n`)
+    })
+
+  program
+    .command('add')
+    .option('--force', 'overwrite existing profile')
+    .description('guided setup (login / api-key / bedrock)')
+    .action(async (opts: { force?: boolean }) => {
+      const name = (await clack.text({ message: 'Profile name' })) as string
+      if (clack.isCancel(name)) return
+      if (profileExists(name, p) && !opts.force) throw new Error(`Profile '${name}' exists. Use --force.`)
+      const type = (await clack.select({
+        message: 'Auth type',
+        options: [
+          { value: 'login', label: 'Subscription login (OAuth)' },
+          { value: 'api-key', label: 'API key' },
+          { value: 'bedrock', label: 'Bedrock' },
+        ],
+      })) as string
+      if (clack.isCancel(type) || !isAuthType(type)) return
+      const profile: Profile = { name, type, env: {} }
+      if (type === 'api-key') {
+        const key = (await clack.password({ message: 'ANTHROPIC_API_KEY' })) as string
+        if (clack.isCancel(key)) return
+        await setSecret(name, key, plat, p)
+      } else if (type === 'bedrock') {
+        const awsProfile = (await clack.text({ message: 'AWS_PROFILE' })) as string
+        const region = (await clack.text({ message: 'AWS_REGION' })) as string
+        profile.env = { CLAUDE_CODE_USE_BEDROCK: '1', AWS_PROFILE: awsProfile, AWS_REGION: region }
+      } else {
+        const cred = await readLiveCredential(plat, p)
+        if (!cred) throw new Error('No live login found. Run /login first, then re-run add.')
+        await setSecret(name, cred, plat, p)
+        const wantToken = await clack.confirm({ message: 'Capture OAuth token for per-shell use?' })
+        if (wantToken === true) {
+          const token = await captureOAuthToken()
+          await setSecret(name, token, plat, p)
+          profile.hasToken = true
+        }
+      }
+      const isolate = await clack.confirm({ message: 'Isolate config (separate settings/history/MCP)?' })
+      if (isolate === true) profile.configDir = `${p.homesDir}/${name}`
+      saveProfile(profile, p)
+      process.stdout.write(`Added profile '${name}'.\n`)
+    })
+
   // Bare name → global switch (default command).
   program
     .argument('[name]', 'profile to switch to globally')
     .action(async (name: string | undefined) => {
-      if (!name) { process.stdout.write('Usage: ccswitch <name> | ccswitch list\n'); return }
-      if (!profileExists(name, p)) throw new Error(`Unknown profile: ${name}. See: ccswitch list`)
-      const profile = loadProfile(name, p)
+      let target = name
+      if (!target) {
+        const profiles = listProfiles(p)
+        if (profiles.length === 0) { process.stdout.write('No profiles. Add one with: ccswitch add\n'); return }
+        const picked = await clack.select({
+          message: 'Switch to',
+          options: profiles.map((prof) => ({ value: prof.name, label: `${prof.name} (${prof.type})` })),
+        })
+        if (clack.isCancel(picked)) return
+        target = picked as string
+      }
+      if (!profileExists(target, p)) throw new Error(`Unknown profile: ${target}. See: ccswitch list`)
+      const profile = loadProfile(target, p)
       await globalSwitch(profile, {
         plat, paths: p, now: nowIso(),
         loadSettings, saveSettings, getSecret,
@@ -94,7 +195,7 @@ export async function runCli(argv: string[]): Promise<number> {
         readActive, writeActive,
         writeApiKeyHelper: (prof, secret) => writeApiKeyHelper(prof, secret, p),
       })
-      process.stdout.write(`Switched to '${name}'. Restart desktop app / IDE to pick up the change.\n`)
+      process.stdout.write(`Switched to '${target}'. Restart desktop app / IDE to pick up the change.\n`)
     })
 
   try {
