@@ -1,8 +1,8 @@
 # ccswitch — Claude account switcher
 
 Switch the active Claude Code account between any number of profiles —
-subscription logins, API keys, and Bedrock — across macOS, Windows, and
-Linux. Supports two modes:
+subscription logins, API keys, Bedrock (AWS credentials), and Bedrock API
+keys — across macOS, Windows, and Linux. Supports two modes:
 
 - **Global switch** — change the active account for the whole machine (CLI,
   desktop app, IDE extensions all follow it). One active account at a time.
@@ -28,11 +28,14 @@ ccswitch <name>             global switch directly
 ccswitch env <name>         print export statements for the current shell
 ccswitch env --unset        print unset statements to clear this shell
 ccswitch shellinit          print a shell function (ccuse) for convenience
-ccswitch save <name> --type <login|api-key|bedrock>
+ccswitch save <name> --type <login|api-key|bedrock|bedrock-key>
                             snapshot current live state into a profile
-                            (--type is required)
-ccswitch add                guided setup (login / api-key / bedrock; config
-                            isolation; optional token capture)
+                            (--type is required; bedrock-key reads
+                            $AWS_BEARER_TOKEN_BEDROCK from the environment)
+ccswitch add                guided setup (login / api-key / bedrock /
+                            bedrock-key; config isolation; optional token
+                            capture)
+ccswitch help               overview of auth types and common commands
 ccswitch token <name>       capture a long-lived OAuth token (claude setup-token)
                             for a login profile, enabling per-shell on macOS
 ccswitch list               show profiles, mark the active one, show types
@@ -83,6 +86,35 @@ Then switch a shell with:
 ```bash
 ccuse <name>
 ```
+
+## Bedrock API keys (`bedrock-key`)
+
+Amazon Bedrock API keys authenticate with a bearer token that Claude Code
+reads from the `AWS_BEARER_TOKEN_BEDROCK` environment variable (alongside
+`CLAUDE_CODE_USE_BEDROCK=1`). This is distinct from the `bedrock` type, which
+uses AWS SigV4 credentials via a named `AWS_PROFILE`.
+
+Create one interactively with `ccswitch add` (choose **Bedrock API key**), or
+snapshot the token currently in your environment:
+
+```bash
+export AWS_BEARER_TOKEN_BEDROCK=<your-bedrock-api-key>
+ccswitch save bedrock-prod --type bedrock-key   # also captures $AWS_REGION if set
+```
+
+The bearer token is held in the OS secret store (keychain on macOS), not in
+the profile JSON. `AWS_REGION` is optional — Claude Code falls back to your
+profile's region, then `us-east-1`.
+
+**Plaintext caveat for global switch.** Claude Code has no runtime helper that
+can source a Bedrock bearer token from a command (unlike `apiKeyHelper` for
+API keys, which is skipped entirely when `CLAUDE_CODE_USE_BEDROCK=1`). So a
+global `ccswitch bedrock-prod` writes `AWS_BEARER_TOKEN_BEDROCK` into
+`settings.json` in **plaintext**. It is a managed key, so switching to any
+other profile removes it again — the token only sits on disk while the
+`bedrock-key` profile is the active global profile. The per-shell flow
+(`ccuse bedrock-prod`) keeps the token in the keychain and exports it only
+into that shell.
 
 ## macOS keychain caveat
 

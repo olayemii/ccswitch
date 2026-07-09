@@ -81,6 +81,42 @@ d2('cli save/token', () => {
     e2(loadProf('work', p).type).toBe('api-key')
   })
 
+  i2('save bedrock-key snapshots the token from AWS_BEARER_TOKEN_BEDROCK env', async () => {
+    const env = { ...process.env, AWS_BEARER_TOKEN_BEDROCK: 'brk-live', AWS_REGION: 'eu-west-1' }
+    const p = paths(env, 'linux')
+    const code = await runCli(['save', 'bprod', '--type', 'bedrock-key'], { platform: 'linux', env })
+    e2(code).toBe(0)
+    e2(await getSec('bprod', 'linux', p)).toBe('brk-live')
+    const prof = loadProf('bprod', p)
+    e2(prof.type).toBe('bedrock-key')
+    e2(prof.env.CLAUDE_CODE_USE_BEDROCK).toBe('1')
+    e2(prof.env.AWS_REGION).toBe('eu-west-1')
+  })
+
+  i2('save bedrock-key errors when AWS_BEARER_TOKEN_BEDROCK is unset', async () => {
+    const env = { ...process.env }
+    delete env.AWS_BEARER_TOKEN_BEDROCK
+    const err: string[] = []
+    const origErrWrite = process.stderr.write
+    process.stderr.write = ((s: string) => { err.push(String(s)); return true }) as any
+    try {
+      const code = await runCli(['save', 'bprod', '--type', 'bedrock-key'], { platform: 'linux', env })
+      e2(code).toBe(1)
+      e2(err.join('')).toContain('AWS_BEARER_TOKEN_BEDROCK')
+    } finally {
+      process.stderr.write = origErrWrite
+    }
+  })
+
+  i2('help prints an overview of the auth types', async () => {
+    const code = await runCli(['help'], { platform: 'linux' })
+    e2(code).toBe(0)
+    const printed = out.join('')
+    e2(printed).toContain('bedrock-key')
+    e2(printed).toContain('login')
+    e2(printed).toContain('api-key')
+  })
+
   i2('token requires an existing login profile', async () => {
     const code = await runCli(['token', 'nope'], { platform: 'linux' })
     e2(code).toBe(1)

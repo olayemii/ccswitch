@@ -6,6 +6,7 @@ describe('isAuthType', () => {
     expect(isAuthType('login')).toBe(true)
     expect(isAuthType('api-key')).toBe(true)
     expect(isAuthType('bedrock')).toBe(true)
+    expect(isAuthType('bedrock-key')).toBe(true)
   })
   it('rejects unknown', () => {
     expect(isAuthType('vertex')).toBe(false)

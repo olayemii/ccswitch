@@ -6,6 +6,7 @@ export const MANAGED_ENV_KEYS = [
   'CLAUDE_CODE_USE_BEDROCK',
   'AWS_PROFILE',
   'AWS_REGION',
+  'AWS_BEARER_TOKEN_BEDROCK',
 ] as const
 
 export interface DesiredSettings {

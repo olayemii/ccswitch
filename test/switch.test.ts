@@ -47,6 +47,25 @@ describe('globalSwitch', () => {
     expect(t.deps.writeActive).toHaveBeenCalledWith({ name: 'k', managedKeys: ['apiKeyHelper'] }, t.paths)
   })
 
+  it('bedrock-key injects AWS_BEARER_TOKEN_BEDROCK into settings, marks it managed, and neutralizes login', async () => {
+    const t = baseDeps({ getSecret: vi.fn().mockResolvedValue('brk-token') })
+    await globalSwitch({ name: 'bk', type: 'bedrock-key', env: { CLAUDE_CODE_USE_BEDROCK: '1', AWS_REGION: 'us-west-2' } }, t.deps as any)
+    expect(t.savedRef().env.AWS_BEARER_TOKEN_BEDROCK).toBe('brk-token')
+    expect(t.savedRef().env.CLAUDE_CODE_USE_BEDROCK).toBe('1')
+    expect(t.deps.neutralizeLiveCredential).toHaveBeenCalled()
+    expect(t.deps.writeActive).toHaveBeenCalledWith(
+      { name: 'bk', managedKeys: expect.arrayContaining(['env.AWS_BEARER_TOKEN_BEDROCK']) },
+      t.paths,
+    )
+  })
+
+  it('bedrock-key throws when no token is stored and does not touch settings', async () => {
+    const t = baseDeps({ getSecret: vi.fn().mockResolvedValue(null) })
+    await expect(globalSwitch({ name: 'bk', type: 'bedrock-key', env: { CLAUDE_CODE_USE_BEDROCK: '1' } }, t.deps as any)).rejects.toThrow(/bedrock/i)
+    expect(t.deps.saveSettings).not.toHaveBeenCalled()
+    expect(t.deps.writeActive).not.toHaveBeenCalled()
+  })
+
   it('bedrock sets aws env and neutralizes login', async () => {
     const t = baseDeps()
     await globalSwitch({ name: 'bd', type: 'bedrock', env: { CLAUDE_CODE_USE_BEDROCK: '1', AWS_PROFILE: 'p', AWS_REGION: 'us-east-1' } }, t.deps as any)

@@ -52,6 +52,38 @@ export async function runCli(
     })
 
   program
+    .command('help')
+    .description('overview of auth types and common commands')
+    .action(() => {
+      process.stdout.write(
+        [
+          'ccswitch — switch Claude Code auth profiles globally or per-shell.',
+          '',
+          'Auth types:',
+          '  login        Subscription OAuth. Global: restores the login credential.',
+          '               Per-shell: needs a captured token (ccswitch token <name>).',
+          '  api-key      Anthropic API key. Global: apiKeyHelper reads it from the',
+          '               keychain at runtime. Per-shell: exports ANTHROPIC_API_KEY.',
+          '  bedrock      Bedrock via AWS credentials (SigV4). Sets CLAUDE_CODE_USE_BEDROCK,',
+          '               AWS_PROFILE, AWS_REGION. No secret stored.',
+          '  bedrock-key  Bedrock via API key (bearer token). Sets CLAUDE_CODE_USE_BEDROCK',
+          '               and AWS_BEARER_TOKEN_BEDROCK. Global switch writes the token into',
+          '               settings.json in PLAINTEXT (cleared when you switch away).',
+          '',
+          'Common commands:',
+          '  ccswitch add               guided setup (login / api-key / bedrock / bedrock-key)',
+          '  ccswitch save <name> --type <t>   snapshot current live state into a profile',
+          '  ccswitch token <name>      capture a per-shell OAuth token (login profiles)',
+          '  ccswitch <name>            switch globally (restart desktop app / IDE)',
+          '  ccswitch env <name>        print exports for the current shell (see: ccuse)',
+          '  ccswitch list | current    show profiles / the active one',
+          '  ccswitch remove <name>     delete a profile, its secret and isolated dir',
+          '  ccswitch shellinit         print the ccuse shell helper',
+        ].join('\n') + '\n',
+      )
+    })
+
+  program
     .command('env [name]')
     .option('--unset', 'print unset statements')
     .description('print export statements for the current shell')
@@ -110,6 +142,11 @@ export async function runCli(
         const key = settings?.env?.ANTHROPIC_API_KEY
         if (!key) throw new Error('No ANTHROPIC_API_KEY in settings to snapshot.')
         await setSecret(name, key, plat, p)
+      } else if (opts.type === 'bedrock-key') {
+        const token = env.AWS_BEARER_TOKEN_BEDROCK
+        if (!token) throw new Error('No AWS_BEARER_TOKEN_BEDROCK in environment to snapshot.')
+        await setSecret(name, token, plat, p)
+        profile.env = { CLAUDE_CODE_USE_BEDROCK: '1', ...(env.AWS_REGION ? { AWS_REGION: env.AWS_REGION } : {}) }
       } else {
         const settings = loadSettings(p.settingsFile)
         profile.env = {
@@ -149,7 +186,8 @@ export async function runCli(
         options: [
           { value: 'login', label: 'Subscription login (OAuth)' },
           { value: 'api-key', label: 'API key' },
-          { value: 'bedrock', label: 'Bedrock' },
+          { value: 'bedrock', label: 'Bedrock (AWS credentials)' },
+          { value: 'bedrock-key', label: 'Bedrock API key' },
         ],
       })) as string
       if (clack.isCancel(type) || !isAuthType(type)) return
@@ -158,6 +196,13 @@ export async function runCli(
         const key = (await clack.password({ message: 'ANTHROPIC_API_KEY' })) as string
         if (clack.isCancel(key)) return
         await setSecret(name, key, plat, p)
+      } else if (type === 'bedrock-key') {
+        const token = (await clack.password({ message: 'AWS_BEARER_TOKEN_BEDROCK (Bedrock API key)' })) as string
+        if (clack.isCancel(token)) return
+        const region = (await clack.text({ message: 'AWS_REGION (optional)' })) as string
+        if (clack.isCancel(region)) return
+        await setSecret(name, token, plat, p)
+        profile.env = { CLAUDE_CODE_USE_BEDROCK: '1', ...(region ? { AWS_REGION: region } : {}) }
       } else if (type === 'bedrock') {
         const awsProfile = (await clack.text({ message: 'AWS_PROFILE' })) as string
         const region = (await clack.text({ message: 'AWS_REGION' })) as string

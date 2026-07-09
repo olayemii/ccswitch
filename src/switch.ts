@@ -59,6 +59,13 @@ export async function globalSwitch(profile: Profile, deps: SwitchDeps): Promise<
       applyCredential = () => deps.neutralizeLiveCredential(deps.plat, deps.paths)
       break
     }
+    case 'bedrock-key': {
+      const secret = await deps.getSecret(profile.name, deps.plat, deps.paths)
+      if (secret === null) throw new Error(`No stored Bedrock API key for profile '${profile.name}'.`)
+      desired = { env: { ...profile.env, AWS_BEARER_TOKEN_BEDROCK: secret }, apiKeyHelper: null }
+      applyCredential = () => deps.neutralizeLiveCredential(deps.plat, deps.paths)
+      break
+    }
   }
 
   // Apply the fragile credential step first. If this throws, nothing on disk

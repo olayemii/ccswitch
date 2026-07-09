@@ -17,6 +17,26 @@ describe('buildEnvExport', () => {
     expect(out).toContain("export AWS_REGION='us-east-1'")
   })
 
+  it('bedrock-key exports CLAUDE_CODE_USE_BEDROCK, AWS_REGION and AWS_BEARER_TOKEN_BEDROCK', () => {
+    const out = buildEnvExport(
+      { name: 'bk', type: 'bedrock-key', env: { CLAUDE_CODE_USE_BEDROCK: '1', AWS_REGION: 'us-west-2' } },
+      'brk-secret',
+    )
+    expect(out).toContain("export CLAUDE_CODE_USE_BEDROCK='1'")
+    expect(out).toContain("export AWS_REGION='us-west-2'")
+    expect(out).toContain("export AWS_BEARER_TOKEN_BEDROCK='brk-secret'")
+  })
+
+  it('bedrock-key without a stored token throws', () => {
+    expect(() => buildEnvExport({ name: 'bk', type: 'bedrock-key', env: { CLAUDE_CODE_USE_BEDROCK: '1' } }, null)).toThrow(/bedrock/i)
+  })
+
+  it('bedrock-key omits AWS_REGION when blank', () => {
+    const out = buildEnvExport({ name: 'bk', type: 'bedrock-key', env: { CLAUDE_CODE_USE_BEDROCK: '1' } }, 'brk')
+    expect(out).not.toContain('AWS_REGION')
+    expect(out).toContain("export AWS_BEARER_TOKEN_BEDROCK='brk'")
+  })
+
   it('login with token exports CLAUDE_CODE_OAUTH_TOKEN', () => {
     const out = buildEnvExport({ name: 'l', type: 'login', env: {}, hasToken: true }, 'oauth-xyz')
     expect(out).toBe("export CLAUDE_CODE_OAUTH_TOKEN='oauth-xyz'")
@@ -40,7 +60,7 @@ describe('buildEnvExport', () => {
 describe('buildEnvUnset', () => {
   it('unsets every managed key', () => {
     const out = buildEnvUnset()
-    for (const k of ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN', 'CLAUDE_CODE_USE_BEDROCK', 'AWS_PROFILE', 'AWS_REGION', 'CLAUDE_CONFIG_DIR']) {
+    for (const k of ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN', 'CLAUDE_CODE_USE_BEDROCK', 'AWS_PROFILE', 'AWS_REGION', 'AWS_BEARER_TOKEN_BEDROCK', 'CLAUDE_CONFIG_DIR']) {
       expect(out).toContain(`unset ${k}`)
     }
   })

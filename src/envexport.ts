@@ -14,6 +14,7 @@ const UNSET_KEYS = [
   'CLAUDE_CODE_USE_BEDROCK',
   'AWS_PROFILE',
   'AWS_REGION',
+  'AWS_BEARER_TOKEN_BEDROCK',
   'CLAUDE_CONFIG_DIR',
 ]
 
@@ -28,6 +29,12 @@ export function buildEnvExport(profile: Profile, secret: string | null): string 
       for (const key of ['CLAUDE_CODE_USE_BEDROCK', 'AWS_PROFILE', 'AWS_REGION']) {
         if (profile.env[key] !== undefined) lines.push(line(key, profile.env[key]))
       }
+      break
+    case 'bedrock-key':
+      if (!secret) throw new Error(`No stored Bedrock API key for profile '${profile.name}'.`)
+      lines.push(line('CLAUDE_CODE_USE_BEDROCK', profile.env.CLAUDE_CODE_USE_BEDROCK ?? '1'))
+      if (profile.env.AWS_REGION) lines.push(line('AWS_REGION', profile.env.AWS_REGION))
+      lines.push(line('AWS_BEARER_TOKEN_BEDROCK', secret))
       break
     case 'login':
       if (!profile.hasToken || !secret) {

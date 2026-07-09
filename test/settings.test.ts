@@ -27,6 +27,24 @@ describe('patchSettings', () => {
     expect(managedKeys.sort()).toEqual(['env.CLAUDE_CODE_USE_BEDROCK'])
   })
 
+  it('manages AWS_BEARER_TOKEN_BEDROCK: sets on switch-in, clears on switch-away', () => {
+    const set = patchSettings(
+      { env: { KEEP: 'me' } },
+      { env: { CLAUDE_CODE_USE_BEDROCK: '1', AWS_BEARER_TOKEN_BEDROCK: 'tok' } },
+      [],
+    )
+    expect(set.settings.env.AWS_BEARER_TOKEN_BEDROCK).toBe('tok')
+    expect(set.settings.env.KEEP).toBe('me')
+    expect(set.managedKeys).toContain('env.AWS_BEARER_TOKEN_BEDROCK')
+
+    const cleared = patchSettings(
+      { env: { AWS_BEARER_TOKEN_BEDROCK: 'tok', CLAUDE_CODE_USE_BEDROCK: '1' } },
+      { env: { ANTHROPIC_API_KEY: 'sk' } },
+      ['env.AWS_BEARER_TOKEN_BEDROCK', 'env.CLAUDE_CODE_USE_BEDROCK'],
+    )
+    expect(cleared.settings.env.AWS_BEARER_TOKEN_BEDROCK).toBeUndefined()
+  })
+
   it('sets and clears apiKeyHelper', () => {
     const set = patchSettings({}, { apiKeyHelper: '/path/helper.sh' }, [])
     expect(set.settings.apiKeyHelper).toBe('/path/helper.sh')
