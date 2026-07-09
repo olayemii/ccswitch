@@ -1,0 +1,22 @@
+{
+  "name": "ccswitch",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": { "ccswitch": "dist/bin.js" },
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "test": "vitest run",
+    "build": "tsup",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "commander": "^12.1.0",
+    "@clack/prompts": "^0.7.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0",
+    "vitest": "^2.0.0",
+    "tsup": "^8.2.0",
+    "@types/node": "^20.14.0"
+  }
+}
