@@ -14,7 +14,7 @@ None of ccswitch's three existing flows handles it:
   credential path — and has no slot for a bearer token.
 
 A Bedrock API key is a **secret** (unlike `AWS_PROFILE`/`AWS_REGION`, which are just names),
-so it belongs in the secret store, consistent with how `login` and `api-key` credentials are held.
+so it is held in the secret store, consistent with `login` and `api-key` credentials.
 
 ## Environment variables (confirmed against Claude Code docs)
 
@@ -33,25 +33,57 @@ short-term distinction relevant to setting the variable.
    `bedrock`. Keeps SigV4-Bedrock secret-free and bearer-Bedrock always token-backed; no
    ambiguous half-configured profiles.
 
-2. **Per-shell only; no global switch.** Claude Code only accepts the token via the
-   `AWS_BEARER_TOKEN_BEDROCK` environment variable, and `apiKeyHelper` cannot supply it (it only
-   feeds the Anthropic auth header). The global switch reaches the desktop app/IDE solely through
-   `settings.json`, whose `env` values are literal plaintext — writing the token there would be a
-   secret-exposure regression versus the keychain design. Therefore `bedrock-key` is supported
-   **only** through the per-shell `ccswitch env <name>` / `ccuse <name>` flow, exactly like a
-   `login` profile's captured OAuth token. Global switch refuses it with an actionable message.
+2. **Global switch is supported, via `settings.json` (Design A).** `bedrock-key` is symmetric
+   with `api-key`: it works both globally (`ccswitch <name>`) and per-shell
+   (`ccswitch env <name>` / `ccuse`).
+
+   **Why the token goes into `settings.json` in plaintext.** Verified against the Claude Code docs:
+   there is **no runtime credential-helper mechanism** that can source a Bedrock bearer token from a
+   command/keychain at launch —
+   - `awsCredentialExport` supplies only SigV4 credentials (access/secret/session), not bearer tokens;
+   - `awsAuthRefresh` only refreshes `~/.aws`, it does not set `AWS_BEARER_TOKEN_BEDROCK`;
+   - `apiKeyHelper` is skipped entirely when `CLAUDE_CODE_USE_BEDROCK=1` (cloud-provider auth wins the
+     precedence order).
+
+   So the only way the desktop app / IDE / CLI can pick up the token via ccswitch's global switch is
+   the `settings.json` `env` block, whose values are literal plaintext. The repo owner has accepted
+   this tradeoff for a single-user machine.
+
+   **A shell-hook alternative was considered and rejected.** A `~/.zshrc` hook that exports the token
+   from the keychain per shell would avoid plaintext, but only reaches terminal-launched `claude` —
+   the desktop app and IDE extension do not source `~/.zshrc`. Since GUI coverage requires the
+   plaintext `settings.json` write anyway, and the CLI already reads that same file, the hook would
+   add moving parts (an rc edit, a per-shell keychain read) for zero additional hygiene or coverage.
+   Dropped as redundant.
+
+   **Hygiene bonus.** `AWS_BEARER_TOKEN_BEDROCK` is registered as a managed env key, so
+   `patchSettings` removes it from `settings.json` when switching to any other profile — the plaintext
+   token only exists on disk while a `bedrock-key` profile is the active global profile.
 
 ## Storage model
 
 - Bearer token → secret store, **default `secret` slot** (same as `api-key`).
 - `profile.env = { CLAUDE_CODE_USE_BEDROCK: '1', AWS_REGION: <region> }` — non-secret;
   `AWS_REGION` omitted when blank. No `AWS_PROFILE`.
+- The token is never stored in the profile JSON; it is read from the secret store at switch time.
 
 ## Components and changes
 
 ### `src/types.ts`
 - Add `'bedrock-key'` to the `AuthType` union and the `AUTH_TYPES` array.
 - `isAuthType` requires no change (derives from `AUTH_TYPES`).
+
+### `src/settings.ts`
+- Add `'AWS_BEARER_TOKEN_BEDROCK'` to `MANAGED_ENV_KEYS`, so `patchSettings` both writes it on
+  switch-in and clears it on switch-away.
+
+### `src/switch.ts`
+- New `case 'bedrock-key'` in `globalSwitch`'s `switch (profile.type)`:
+  - `secret = await deps.getSecret(profile.name, deps.plat, deps.paths)`; if null →
+    `throw new Error("No stored Bedrock API key for profile '<name>'.")`.
+  - `desired = { env: { ...profile.env, AWS_BEARER_TOKEN_BEDROCK: secret }, apiKeyHelper: null }`.
+  - `applyCredential = () => deps.neutralizeLiveCredential(...)` (same as `bedrock`/`api-key`).
+- The existing outgoing-login re-snapshot step (added earlier) is unaffected.
 
 ### `src/envexport.ts`
 - Add `AWS_BEARER_TOKEN_BEDROCK` to `UNSET_KEYS`.
@@ -62,17 +94,10 @@ short-term distinction relevant to setting the variable.
   - Emit `export AWS_BEARER_TOKEN_BEDROCK=<secret>`.
   - `CLAUDE_CONFIG_DIR` handled by the existing shared tail.
 
-### `src/switch.ts`
-- New `case 'bedrock-key'` in `globalSwitch`'s `switch (profile.type)`, throwing **before** any
-  credential or disk mutation:
-  `bedrock-key profiles can't be switched globally (the token would be stored in plaintext in
-  settings.json). Use: ccswitch env <name>  (or: ccuse <name>)`.
-- Because it throws before `applyCredential()` and the settings write, no disk state changes.
-
 ### `src/cli.ts`
-- **`env` command** — no change needed: non-login types already read the `secret` slot
+- **`env` command** — no change: non-login types already read the `secret` slot
   (`slot: profile.type === 'login' ? 'token' : 'secret'`).
-- **`add` command** — add a fourth select option `{ value: 'bedrock-key', label: 'Bedrock API key' }`.
+- **`add` command** — fourth select option `{ value: 'bedrock-key', label: 'Bedrock API key' }`.
   When chosen: `password` prompt for the token, `text` prompt for region;
   `setSecret(name, token, plat, p)` (default slot);
   `profile.env = { CLAUDE_CODE_USE_BEDROCK: '1', ...(region ? { AWS_REGION: region } : {}) }`.
@@ -81,53 +106,71 @@ short-term distinction relevant to setting the variable.
   `setSecret(name, token, plat, p)`;
   `profile.env = { CLAUDE_CODE_USE_BEDROCK: '1', ...(env.AWS_REGION ? { AWS_REGION: env.AWS_REGION } : {}) }`.
   (`env` is already in `runCli` scope.)
+- **default switch action** — already routes every profile through `globalSwitch`; the new
+  `bedrock-key` case there is reached automatically. No change beyond `globalSwitch`.
 - **`remove` command** — no change; it already deletes the default `secret` slot (and the `token`
   slot), covering `bedrock-key`.
 - **New `help` command** — `ccswitch help` prints a concise overview:
   - the four auth types and what each sets;
-  - which support **global** switch (`login`, `api-key`, `bedrock`) vs **per-shell only**
-    (`bedrock-key`);
+  - that all four support both global switch and per-shell `env`;
+  - the plaintext-on-disk note for `bedrock-key` global switch;
   - common commands: `add`, `save`, `token`, `env`/`ccuse`, `list`, `current`, `switch <name>`.
   Complements Commander's auto-generated `--help`.
 
 ### `README.md`
-- Document `bedrock-key`: what it sets, that it is per-shell only (with the plaintext rationale),
-  and the `add` / `save --type bedrock-key` capture paths.
+- Document `bedrock-key`: what it sets, that global switch writes the token to `settings.json`
+  in plaintext (cleared on switch-away), and the `add` / `save --type bedrock-key` capture paths.
 
-## Data flow (per-shell)
+## Data flow
 
+### Global switch
 ```
-ccuse prod
-  → ccswitch env prod
-    → loadProfile(prod)                       # type: bedrock-key
-    → getSecret(prod, slot 'secret')          # bearer token
-    → buildEnvExport(profile, secret)         # 3 exports (+ CLAUDE_CONFIG_DIR if isolated)
-  → eval in shell                             # env vars set for this shell only
+ccswitch bedrock-prod
+  → globalSwitch(profile)                       # type: bedrock-key
+    → getSecret(bedrock-prod, slot 'secret')    # bearer token
+    → neutralizeLiveCredential()                # remove any login keychain entry
+    → patchSettings: settings.env gets
+        CLAUDE_CODE_USE_BEDROCK, AWS_REGION?, AWS_BEARER_TOKEN_BEDROCK (managed)
+    → writeActive({ name, managedKeys })
+  # desktop app / IDE / CLI read settings.json
+ccswitch <other>
+  → patchSettings clears the managed AWS_BEARER_TOKEN_BEDROCK from settings.json
+```
+
+### Per-shell
+```
+ccuse bedrock-prod → ccswitch env bedrock-prod
+  → loadProfile → getSecret(slot 'secret')
+  → buildEnvExport → 3 exports (+ CLAUDE_CONFIG_DIR if isolated)
+  → eval in shell
 ```
 
 ## Error handling
 
-- `env`/`buildEnvExport` with no stored token → clear throw naming the profile.
-- Global switch of `bedrock-key` → actionable throw pointing to `ccswitch env` / `ccuse`;
-  no disk mutation.
+- `buildEnvExport` / global switch with no stored token → clear throw naming the profile.
 - `save --type bedrock-key` with `AWS_BEARER_TOKEN_BEDROCK` unset → clear throw.
+- Global switch remains transactional: the credential step (`neutralizeLiveCredential`) runs before
+  the settings write, and a settings/active failure yields the existing actionable backup message.
 
 ## Testing (TDD, one behavior per test)
 
 - `types.test.ts` — `isAuthType('bedrock-key')` is true.
+- `settings.test.ts` — `patchSettings` writes `env.AWS_BEARER_TOKEN_BEDROCK` when desired and clears
+  it when previously managed and no longer desired.
 - `envexport.test.ts`
   - `bedrock-key` emits `CLAUDE_CODE_USE_BEDROCK`, `AWS_REGION`, `AWS_BEARER_TOKEN_BEDROCK` from the secret;
   - throws when the secret is null;
   - omits `AWS_REGION` when blank;
   - `buildEnvUnset` includes `AWS_BEARER_TOKEN_BEDROCK`.
-- `switch.test.ts` — global switch of a `bedrock-key` profile throws an actionable message and
-  calls neither `saveSettings` nor `writeActive` nor any credential mutation.
+- `switch.test.ts` — global switch of a `bedrock-key` profile writes `AWS_BEARER_TOKEN_BEDROCK`
+  (+ bedrock env) into settings, marks it managed, and neutralizes the live login credential;
+  throws when the token is missing.
 - `cli.test.ts`
   - `save --type bedrock-key` captures the token from `env` and errors when it is unset;
-  - `help` prints the overview (mentions the four types and the per-shell-only note).
+  - `help` prints the overview (mentions the four types and the plaintext note).
 
 ## Out of scope (YAGNI)
 
-- Global-switch support for `bedrock-key`.
+- A shell-hook / `shellenv` auto-injection mechanism (rejected as redundant given Design A).
 - Short-term vs long-term Bedrock key handling.
 - Any Windows-specific token behavior beyond the existing per-platform secret patterns.
