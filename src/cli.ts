@@ -5,7 +5,7 @@ import { getSecret, deleteSecret } from './secretStore.js'
 import { buildEnvExport, buildEnvUnset } from './envexport.js'
 import { loadSettings, saveSettings } from './settings.js'
 import { writeLiveCredential, neutralizeLiveCredential } from './credentials.js'
-import { writeApiKeyHelper, captureOAuthToken } from './helpers.js'
+import { buildApiKeyHelperCommand, captureOAuthToken } from './helpers.js'
 import { globalSwitch } from './switch.js'
 import { rmSync, existsSync } from 'node:fs'
 import * as clack from '@clack/prompts'
@@ -193,7 +193,7 @@ export async function runCli(argv: string[]): Promise<number> {
         loadSettings, saveSettings, getSecret,
         writeLiveCredential, neutralizeLiveCredential,
         readActive, writeActive,
-        writeApiKeyHelper: (prof, secret) => writeApiKeyHelper(prof, secret, p),
+        writeApiKeyHelper: (prof) => buildApiKeyHelperCommand(prof, plat, p),
       })
       process.stdout.write(`Switched to '${target}'. Restart desktop app / IDE to pick up the change.\n`)
     })

@@ -1,22 +1,40 @@
 import { describe, it, expect, vi } from 'vitest'
-import { writeApiKeyHelper, captureOAuthToken } from '../src/helpers.js'
-import { mkdtempSync, readFileSync, statSync } from 'node:fs'
+import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Paths } from '../src/platform.js'
+
+vi.mock('../src/secretStore.js', () => ({
+  resolveLoginKeychain: vi.fn().mockResolvedValue('/Users/me/Library/Keychains/login.keychain-db'),
+}))
+
+const { buildApiKeyHelperCommand, captureOAuthToken } = await import('../src/helpers.js')
 
 function tmpPaths(): Paths {
   const dir = mkdtempSync(join(tmpdir(), 'ccs-'))
   return { ccswitchDir: dir, profilesDir: join(dir, 'profiles'), secretsDir: join(dir, 'secrets'), homesDir: join(dir, 'homes'), activeFile: join(dir, 'active.json'), claudeConfigDir: dir, settingsFile: join(dir, 's.json'), credentialsFile: join(dir, 'c.json') }
 }
 
-describe('writeApiKeyHelper', () => {
-  it('writes a 0700 script that echoes the key', () => {
+describe('buildApiKeyHelperCommand', () => {
+  it('darwin: returns a security find-generic-password command using the resolved login keychain', async () => {
     const p = tmpPaths()
-    const path = writeApiKeyHelper({ name: 'k', type: 'api-key', env: {} }, 'sk-42', p)
-    const content = readFileSync(path, 'utf8')
-    expect(content).toContain('sk-42')
-    expect(statSync(path).mode & 0o777).toBe(0o700)
+    const cmd = await buildApiKeyHelperCommand({ name: 'k', type: 'api-key', env: {} }, 'darwin', p)
+    expect(cmd).toBe("security find-generic-password -s 'ccswitch:k' -a secret -w '/Users/me/Library/Keychains/login.keychain-db'")
+    expect(cmd).not.toContain('sk-')
+  })
+
+  it('linux: returns a cat command reading the secrets file', async () => {
+    const p = tmpPaths()
+    const cmd = await buildApiKeyHelperCommand({ name: 'k', type: 'api-key', env: {} }, 'linux', p)
+    expect(cmd).toBe(`cat '${join(p.secretsDir, 'k')}'`)
+    expect(cmd).not.toContain('sk-')
+  })
+
+  it('win32: returns a type command reading the secrets file with windows-style quoting', async () => {
+    const p = tmpPaths()
+    const cmd = await buildApiKeyHelperCommand({ name: 'k', type: 'api-key', env: {} }, 'win32', p)
+    expect(cmd).toBe(`type "${join(p.secretsDir, 'k')}"`)
+    expect(cmd).not.toContain('sk-')
   })
 })
 

@@ -19,7 +19,7 @@ function baseDeps(overrides = {}) {
       neutralizeLiveCredential: vi.fn().mockResolvedValue(undefined),
       readActive: vi.fn().mockReturnValue(null),
       writeActive: vi.fn(),
-      writeApiKeyHelper: vi.fn().mockReturnValue('/cc/apikey-helper.sh'),
+      writeApiKeyHelper: vi.fn().mockResolvedValue("cat '/cc/secrets/k'"),
       ...overrides,
     },
   }
@@ -38,7 +38,8 @@ describe('globalSwitch', () => {
   it('api-key sets apiKeyHelper and neutralizes login', async () => {
     const t = baseDeps()
     await globalSwitch({ name: 'k', type: 'api-key', env: {} }, t.deps as any)
-    expect(t.savedRef().apiKeyHelper).toBe('/cc/apikey-helper.sh')
+    expect(t.deps.writeApiKeyHelper).toHaveBeenCalledWith({ name: 'k', type: 'api-key', env: {} })
+    expect(t.savedRef().apiKeyHelper).toBe("cat '/cc/secrets/k'")
     expect(t.deps.neutralizeLiveCredential).toHaveBeenCalled()
     expect(t.deps.writeActive).toHaveBeenCalledWith({ name: 'k', managedKeys: ['apiKeyHelper'] }, t.paths)
   })

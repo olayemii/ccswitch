@@ -1,15 +1,29 @@
-import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { run as realRun } from './exec.js'
-import type { Profile } from './types.js'
+import { resolveLoginKeychain } from './secretStore.js'
+import type { Profile, Platform } from './types.js'
 import type { Paths } from './platform.js'
 
-export function writeApiKeyHelper(profile: Profile, secret: string, paths: Paths): string {
-  mkdirSync(paths.ccswitchDir, { recursive: true })
-  const file = join(paths.ccswitchDir, `apikey-helper-${profile.name}.sh`)
-  const escaped = secret.replace(/'/g, "'\\''")
-  writeFileSync(file, `#!/bin/sh\nprintf '%s' '${escaped}'\n`, { encoding: 'utf8', mode: 0o700 })
-  return file
+function singleQuote(value: string): string {
+  return `'${value.replace(/'/g, "'\\''")}'`
+}
+
+function doubleQuoteWin(value: string): string {
+  return `"${value.replace(/"/g, '""')}"`
+}
+
+export async function buildApiKeyHelperCommand(profile: Profile, plat: Platform, paths: Paths): Promise<string> {
+  if (plat === 'darwin') {
+    const keychain = await resolveLoginKeychain()
+    const service = singleQuote(`ccswitch:${profile.name}`)
+    return `security find-generic-password -s ${service} -a secret -w ${singleQuote(keychain)}`
+  }
+  if (plat === 'win32') {
+    const file = join(paths.secretsDir, profile.name)
+    return `type ${doubleQuoteWin(file)}`
+  }
+  const file = join(paths.secretsDir, profile.name)
+  return `cat ${singleQuote(file)}`
 }
 
 export async function captureOAuthToken(deps: { run?: typeof realRun } = {}): Promise<string> {

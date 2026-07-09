@@ -13,7 +13,7 @@ export interface SwitchDeps {
   neutralizeLiveCredential: (plat: Platform, paths: Paths) => Promise<void>
   readActive: (paths: Paths) => { name: string; managedKeys: string[] } | null
   writeActive: (state: { name: string; managedKeys: string[] }, paths: Paths) => void
-  writeApiKeyHelper: (profile: Profile, secret: string) => string
+  writeApiKeyHelper: (profile: Profile) => string | Promise<string>
 }
 
 export async function globalSwitch(profile: Profile, deps: SwitchDeps): Promise<void> {
@@ -34,8 +34,8 @@ export async function globalSwitch(profile: Profile, deps: SwitchDeps): Promise<
     case 'api-key': {
       const secret = await deps.getSecret(profile.name, deps.plat, deps.paths)
       if (secret === null) throw new Error(`No stored API key for profile '${profile.name}'.`)
-      const helperPath = deps.writeApiKeyHelper(profile, secret)
-      desired = { env: {}, apiKeyHelper: helperPath }
+      const helperCommand = await deps.writeApiKeyHelper(profile)
+      desired = { env: {}, apiKeyHelper: helperCommand }
       applyCredential = () => deps.neutralizeLiveCredential(deps.plat, deps.paths)
       break
     }
