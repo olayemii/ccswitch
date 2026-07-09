@@ -1,5 +1,5 @@
 import { Command } from 'commander'
-import { getPlatform, paths, usesKeychain } from './platform.js'
+import { getPlatform, paths } from './platform.js'
 import { listProfiles, loadProfile, readActive, removeProfile, profileExists, writeActive } from './profiles.js'
 import { getSecret, deleteSecret } from './secretStore.js'
 import { buildEnvExport, buildEnvUnset } from './envexport.js'
@@ -48,6 +48,7 @@ export async function runCli(argv: string[]): Promise<number> {
     .action(async (name: string | undefined, opts: { unset?: boolean }) => {
       if (opts.unset) { process.stdout.write(buildEnvUnset() + '\n'); return }
       if (!name) throw new Error('Usage: ccswitch env <name> | ccswitch env --unset')
+      if (!profileExists(name, p)) throw new Error(`Unknown profile: ${name}. See: ccswitch list`)
       const profile = loadProfile(name, p)
       const secret = await getSecret(name, plat, p)
       process.stdout.write(buildEnvExport(profile, secret) + '\n')
@@ -84,6 +85,7 @@ export async function runCli(argv: string[]): Promise<number> {
     .argument('[name]', 'profile to switch to globally')
     .action(async (name: string | undefined) => {
       if (!name) { process.stdout.write('Usage: ccswitch <name> | ccswitch list\n'); return }
+      if (!profileExists(name, p)) throw new Error(`Unknown profile: ${name}. See: ccswitch list`)
       const profile = loadProfile(name, p)
       await globalSwitch(profile, {
         plat, paths: p, now: nowIso(),

@@ -49,7 +49,15 @@ describe('cli read commands', () => {
   })
 
   it('unknown profile switch errors with suggestion', async () => {
-    const code = await runCli(['does-not-exist'])
-    expect(code).toBe(1)
+    const err: string[] = []
+    const origErrWrite = process.stderr.write
+    process.stderr.write = ((s: string) => { err.push(String(s)); return true }) as any
+    try {
+      const code = await runCli(['does-not-exist'])
+      expect(code).toBe(1)
+      expect(err.join('')).toContain('ccswitch list')
+    } finally {
+      process.stderr.write = origErrWrite
+    }
   })
 })
