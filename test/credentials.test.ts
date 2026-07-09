@@ -45,4 +45,29 @@ describe('credentials keychain backend', () => {
     await neutralizeLiveCredential('darwin', p, { run })
     expect(run).toHaveBeenCalledWith('security', expect.arrayContaining(['delete-generic-password', '-s', 'Claude Code-credentials']))
   })
+
+  it('appends the resolved login keychain as the trailing arg on read/write/neutralize', async () => {
+    const p = tmpPaths()
+    const keychainPath = '/Users/someone/Library/Keychains/login.keychain-db'
+    const run = vi.fn().mockImplementation(async (cmd: string, args: string[]) => {
+      if (args[0] === 'login-keychain') {
+        return { stdout: `    "${keychainPath}"\n`, stderr: '', code: 0 }
+      }
+      return { stdout: '{"t":1}\n', stderr: '', code: 0 }
+    })
+
+    await writeLiveCredential('{"t":1}', 'darwin', p, { run })
+    let addArgs = run.mock.calls.find((c) => c[1][0] === 'add-generic-password')![1] as string[]
+    expect(addArgs[addArgs.length - 1]).toBe(keychainPath)
+
+    run.mockClear()
+    await readLiveCredential('darwin', p, { run })
+    let findArgs = run.mock.calls.find((c) => c[1][0] === 'find-generic-password')![1] as string[]
+    expect(findArgs[findArgs.length - 1]).toBe(keychainPath)
+
+    run.mockClear()
+    await neutralizeLiveCredential('darwin', p, { run })
+    let deleteArgs = run.mock.calls.find((c) => c[1][0] === 'delete-generic-password')![1] as string[]
+    expect(deleteArgs[deleteArgs.length - 1]).toBe(keychainPath)
+  })
 })
