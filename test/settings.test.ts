@@ -47,3 +47,35 @@ describe('patchSettings', () => {
     expect(current.env.ANTHROPIC_API_KEY).toBe('old')
   })
 })
+
+import { describe as describeIO, it as itIO, expect as expectIO } from 'vitest'
+import { loadSettings, saveSettings } from '../src/settings.js'
+import { mkdtempSync, writeFileSync, existsSync, readFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
+describeIO('settings file IO', () => {
+  itIO('loads {} for missing file', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ccs-'))
+    expectIO(loadSettings(join(dir, 'nope.json'))).toEqual({})
+  })
+
+  itIO('backs up existing file before saving', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ccs-'))
+    const file = join(dir, 'settings.json')
+    writeFileSync(file, JSON.stringify({ theme: 'dark' }))
+    saveSettings(file, { theme: 'light' }, '2026-07-09T00:00:00Z')
+    const bak = join(dir, 'settings.json.bak.2026-07-09T00:00:00Z')
+    expectIO(existsSync(bak)).toBe(true)
+    expectIO(JSON.parse(readFileSync(bak, 'utf8')).theme).toBe('dark')
+    expectIO(JSON.parse(readFileSync(file, 'utf8')).theme).toBe('light')
+  })
+
+  itIO('does not back up when file is absent', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ccs-'))
+    const file = join(dir, 'settings.json')
+    saveSettings(file, { a: 1 }, '2026-07-09T00:00:00Z')
+    expectIO(existsSync(join(dir, 'settings.json.bak.2026-07-09T00:00:00Z'))).toBe(false)
+    expectIO(existsSync(file)).toBe(true)
+  })
+})

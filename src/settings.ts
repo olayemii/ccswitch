@@ -1,3 +1,5 @@
+import { readFileSync, writeFileSync, existsSync, copyFileSync } from 'node:fs'
+
 export const MANAGED_ENV_KEYS = [
   'ANTHROPIC_API_KEY',
   'ANTHROPIC_AUTH_TOKEN',
@@ -51,4 +53,16 @@ export function patchSettings(
   }
 
   return { settings, managedKeys }
+}
+
+export function loadSettings(file: string): any {
+  if (!existsSync(file)) return {}
+  return JSON.parse(readFileSync(file, 'utf8'))
+}
+
+export function saveSettings(file: string, settings: any, now: string): void {
+  if (existsSync(file)) {
+    copyFileSync(file, `${file}.bak.${now}`)
+  }
+  writeFileSync(file, JSON.stringify(settings, null, 2) + '\n', 'utf8')
 }
