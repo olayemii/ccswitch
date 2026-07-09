@@ -28,7 +28,9 @@ ccswitch <name>             global switch directly
 ccswitch env <name>         print export statements for the current shell
 ccswitch env --unset        print unset statements to clear this shell
 ccswitch shellinit          print a shell function (ccuse) for convenience
-ccswitch save <name>        snapshot current live state into a profile
+ccswitch save <name> --type <login|api-key|bedrock>
+                            snapshot current live state into a profile
+                            (--type is required)
 ccswitch add                guided setup (login / api-key / bedrock; config
                             isolation; optional token capture)
 ccswitch token <name>       capture a long-lived OAuth token (claude setup-token)
@@ -96,9 +98,22 @@ for a login profile before using `ccswitch env <name>` on macOS. Without a
 captured token, `env` will explain this and refuse to proceed for a login
 profile.
 
-On Windows and Linux, credentials live in `~/.claude/.credentials.json`,
-which does move with `CLAUDE_CONFIG_DIR`, so full per-shell isolation of
-every auth type (including logins) works without capturing a token.
+**On all platforms — macOS, Windows, and Linux — `ccswitch env <name>` for a
+`login` profile requires a captured OAuth token.** Per-shell mode works by
+exporting `CLAUDE_CODE_OAUTH_TOKEN` into the shell; if the profile has no
+captured token, `ccswitch env <name>` throws `Profile '<name>' has no
+captured OAuth token. Run: ccswitch token <name>` regardless of OS. Run
+`ccswitch token <name>` first on any platform to enable per-shell use of a
+login profile.
+
+**Known limitation:** the original design envisioned Windows/Linux login
+profiles being usable per-shell via an isolated, per-profile
+`CLAUDE_CONFIG_DIR` (each with its own `.credentials.json`) *without* needing
+a captured token, since `.credentials.json` moves with `CLAUDE_CONFIG_DIR` on
+those platforms. That path is not implemented in the current build —
+`buildEnvExport` in `src/envexport.ts` has no platform branch and always
+requires `profile.hasToken` plus a stored secret for `type: 'login'`, so
+token capture is required for per-shell login switching everywhere today.
 
 ## Development
 
