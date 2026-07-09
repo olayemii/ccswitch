@@ -15,7 +15,7 @@ const slotFile = (paths: Paths, name: string, slot: SecretSlot): string =>
 
 export async function resolveLoginKeychain(deps: Deps = {}): Promise<string> {
   const run = deps.run ?? realRun
-  const r = await run('security', ['login-keychain', '-d', 'user'])
+  const r = await run('security', ['login-keychain'])
   if (r.code === 0 && r.stdout.trim().length > 0) {
     return r.stdout.trim().replace(/^"|"$/g, '')
   }

@@ -1,4 +1,5 @@
-import { readFileSync, writeFileSync, existsSync, copyFileSync } from 'node:fs'
+import { readFileSync, writeFileSync, existsSync, copyFileSync, mkdirSync } from 'node:fs'
+import { dirname } from 'node:path'
 
 export const MANAGED_ENV_KEYS = [
   'ANTHROPIC_API_KEY',
@@ -64,6 +65,8 @@ export function loadSettings(file: string): any {
 export function saveSettings(file: string, settings: any, now: string): void {
   if (existsSync(file)) {
     copyFileSync(file, `${file}.bak.${now}`)
+  } else {
+    mkdirSync(dirname(file), { recursive: true })
   }
   writeFileSync(file, JSON.stringify(settings, null, 2) + '\n', 'utf8')
 }

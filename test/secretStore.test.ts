@@ -131,6 +131,12 @@ describe('resolveLoginKeychain', () => {
     expect(await resolveLoginKeychain({ run })).toBe('/Users/x/Library/Keychains/login.keychain-db')
   })
 
+  it('invokes `security login-keychain` without the -d user filter', async () => {
+    const run = vi.fn().mockResolvedValue({ stdout: '    "/k/login.keychain-db"\n', stderr: '', code: 0 })
+    await resolveLoginKeychain({ run })
+    expect(run).toHaveBeenCalledWith('security', ['login-keychain'])
+  })
+
   it('falls back to HOME default when the command fails', async () => {
     const run = vi.fn().mockResolvedValue({ stdout: '', stderr: 'error', code: 1 })
     expect(await resolveLoginKeychain({ run })).toBe(`${process.env.HOME}/Library/Keychains/login.keychain-db`)

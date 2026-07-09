@@ -89,6 +89,14 @@ describeIO('settings file IO', () => {
     expectIO(JSON.parse(readFileSync(file, 'utf8')).theme).toBe('light')
   })
 
+  itIO('creates the parent directory when it does not exist', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ccs-'))
+    const file = join(dir, 'nested', 'sub', 'settings.json')
+    saveSettings(file, { a: 1 }, '2026-07-09T00:00:00Z')
+    expectIO(existsSync(file)).toBe(true)
+    expectIO(JSON.parse(readFileSync(file, 'utf8')).a).toBe(1)
+  })
+
   itIO('does not back up when file is absent', () => {
     const dir = mkdtempSync(join(tmpdir(), 'ccs-'))
     const file = join(dir, 'settings.json')
