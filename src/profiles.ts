@@ -7,6 +7,14 @@ function profileFile(name: string, paths: Paths): string {
   return join(paths.profilesDir, `${name}.json`)
 }
 
+const VALID_NAME_RE = /^[A-Za-z0-9._-]+$/
+
+export function assertValidProfileName(name: string): void {
+  if (name === '.' || name === '..' || !VALID_NAME_RE.test(name)) {
+    throw new Error(`Invalid profile name: '${name}'. Use only letters, digits, dot, dash, underscore.`)
+  }
+}
+
 export function saveProfile(profile: Profile, paths: Paths): void {
   mkdirSync(paths.profilesDir, { recursive: true })
   writeFileSync(profileFile(profile.name, paths), JSON.stringify(profile, null, 2) + '\n', 'utf8')

@@ -1,29 +1,34 @@
 import { Command } from 'commander'
+import path from 'node:path'
 import { getPlatform, paths } from './platform.js'
-import { listProfiles, loadProfile, readActive, removeProfile, profileExists, writeActive } from './profiles.js'
+import { listProfiles, loadProfile, readActive, removeProfile, profileExists, writeActive, assertValidProfileName } from './profiles.js'
 import { getSecret, deleteSecret } from './secretStore.js'
 import { buildEnvExport, buildEnvUnset } from './envexport.js'
 import { loadSettings, saveSettings } from './settings.js'
 import { writeLiveCredential, neutralizeLiveCredential } from './credentials.js'
 import { buildApiKeyHelperCommand, captureOAuthToken } from './helpers.js'
 import { globalSwitch } from './switch.js'
-import { rmSync, existsSync } from 'node:fs'
+import { rmSync, existsSync, mkdirSync, cpSync } from 'node:fs'
 import * as clack from '@clack/prompts'
 import { setSecret } from './secretStore.js'
 import { readLiveCredential } from './credentials.js'
 import { saveProfile } from './profiles.js'
-import { isAuthType, type Profile } from './types.js'
+import { isAuthType, type Profile, type Platform } from './types.js'
 
 function nowIso(): string {
   // Injected-free deterministic-ish timestamp; Date is allowed at runtime (not in workflow scripts).
   return new Date().toISOString().replace(/[:.]/g, '-')
 }
 
-export async function runCli(argv: string[]): Promise<number> {
+export async function runCli(
+  argv: string[],
+  opts: { platform?: Platform; env?: NodeJS.ProcessEnv } = {},
+): Promise<number> {
   const program = new Command()
   program.name('ccswitch').version('0.1.0').exitOverride()
-  const plat = getPlatform()
-  const p = paths(process.env, plat)
+  const plat = opts.platform ?? getPlatform()
+  const env = opts.env ?? process.env
+  const p = paths(env, plat)
 
   program
     .command('list')
@@ -55,7 +60,7 @@ export async function runCli(argv: string[]): Promise<number> {
       if (!name) throw new Error('Usage: ccswitch env <name> | ccswitch env --unset')
       if (!profileExists(name, p)) throw new Error(`Unknown profile: ${name}. See: ccswitch list`)
       const profile = loadProfile(name, p)
-      const secret = await getSecret(name, plat, p)
+      const secret = await getSecret(name, plat, p, { slot: profile.type === 'login' ? 'token' : 'secret' })
       process.stdout.write(buildEnvExport(profile, secret) + '\n')
     })
 
@@ -66,6 +71,7 @@ export async function runCli(argv: string[]): Promise<number> {
       if (!profileExists(name, p)) throw new Error(`Unknown profile: ${name}. See: ccswitch list`)
       const profile = loadProfile(name, p)
       await deleteSecret(name, plat, p)
+      await deleteSecret(name, plat, p, { slot: 'token' })
       if (profile.configDir && existsSync(profile.configDir)) rmSync(profile.configDir, { recursive: true, force: true })
       removeProfile(name, p)
       process.stdout.write(`Removed profile '${name}'.\n`)
@@ -91,6 +97,7 @@ export async function runCli(argv: string[]): Promise<number> {
     .option('--force', 'overwrite existing profile')
     .description('snapshot current live state into a profile')
     .action(async (name: string, opts: { type: string; force?: boolean }) => {
+      assertValidProfileName(name)
       if (!isAuthType(opts.type)) throw new Error(`Invalid --type '${opts.type}'`)
       if (profileExists(name, p) && !opts.force) throw new Error(`Profile '${name}' exists. Use --force.`)
       const profile: Profile = { name, type: opts.type, env: {} }
@@ -123,7 +130,7 @@ export async function runCli(argv: string[]): Promise<number> {
       const profile = loadProfile(name, p)
       if (profile.type !== 'login') throw new Error(`Profile '${name}' is not a login profile.`)
       const token = await captureOAuthToken()
-      await setSecret(name, token, plat, p)
+      await setSecret(name, token, plat, p, { slot: 'token' })
       saveProfile({ ...profile, hasToken: true }, p)
       process.stdout.write(`Captured OAuth token for '${name}'. Per-shell login now works.\n`)
     })
@@ -135,6 +142,7 @@ export async function runCli(argv: string[]): Promise<number> {
     .action(async (opts: { force?: boolean }) => {
       const name = (await clack.text({ message: 'Profile name' })) as string
       if (clack.isCancel(name)) return
+      assertValidProfileName(name)
       if (profileExists(name, p) && !opts.force) throw new Error(`Profile '${name}' exists. Use --force.`)
       const type = (await clack.select({
         message: 'Auth type',
@@ -161,12 +169,25 @@ export async function runCli(argv: string[]): Promise<number> {
         const wantToken = await clack.confirm({ message: 'Capture OAuth token for per-shell use?' })
         if (wantToken === true) {
           const token = await captureOAuthToken()
-          await setSecret(name, token, plat, p)
+          await setSecret(name, token, plat, p, { slot: 'token' })
           profile.hasToken = true
         }
       }
       const isolate = await clack.confirm({ message: 'Isolate config (separate settings/history/MCP)?' })
-      if (isolate === true) profile.configDir = `${p.homesDir}/${name}`
+      if (isolate === true) {
+        profile.configDir = path.join(p.homesDir, name)
+        mkdirSync(profile.configDir, { recursive: true })
+        if (existsSync(p.claudeConfigDir)) {
+          try {
+            cpSync(p.claudeConfigDir, profile.configDir, {
+              recursive: true,
+              filter: (src) => path.basename(src) !== '.credentials.json',
+            })
+          } catch (err: any) {
+            process.stderr.write(`Warning: failed to seed isolated config dir: ${err?.message ?? err}\n`)
+          }
+        }
+      }
       saveProfile(profile, p)
       process.stdout.write(`Added profile '${name}'.\n`)
     })

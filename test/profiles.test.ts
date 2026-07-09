@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { saveProfile, loadProfile, listProfiles, removeProfile, profileExists, readActive, writeActive } from '../src/profiles.js'
+import { saveProfile, loadProfile, listProfiles, removeProfile, profileExists, readActive, writeActive, assertValidProfileName } from '../src/profiles.js'
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -47,5 +47,19 @@ describe('profiles', () => {
     expect(readActive(p)).toBeNull()
     writeActive({ name: 'work', managedKeys: ['env.ANTHROPIC_API_KEY'] }, p)
     expect(readActive(p)).toEqual({ name: 'work', managedKeys: ['env.ANTHROPIC_API_KEY'] })
+  })
+})
+
+describe('assertValidProfileName', () => {
+  it('accepts valid names', () => {
+    expect(() => assertValidProfileName('work')).not.toThrow()
+    expect(() => assertValidProfileName('my.profile')).not.toThrow()
+    expect(() => assertValidProfileName('a-b_c')).not.toThrow()
+  })
+
+  it('rejects invalid names', () => {
+    for (const bad of ['', '.', '..', '../x', 'a/b', 'a b', "a'b"]) {
+      expect(() => assertValidProfileName(bad)).toThrow(/Invalid profile name/)
+    }
   })
 })
