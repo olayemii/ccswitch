@@ -29,7 +29,7 @@ describe('globalSwitch', () => {
   it('login restores credential and clears apiKeyHelper, preserves user keys', async () => {
     const t = baseDeps()
     await globalSwitch({ name: 'work', type: 'login', env: {} }, t.deps as any)
-    expect(t.deps.writeLiveCredential).toHaveBeenCalledWith('sk-live', 'linux', t.paths, expect.anything())
+    expect(t.deps.writeLiveCredential).toHaveBeenCalledWith('sk-live', 'linux', t.paths)
     expect(t.savedRef().theme).toBe('dark')
     expect(t.savedRef().apiKeyHelper).toBeUndefined()
     expect(t.deps.writeActive).toHaveBeenCalledWith({ name: 'work', managedKeys: [] }, t.paths)

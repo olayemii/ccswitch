@@ -9,7 +9,7 @@ export interface SwitchDeps {
   loadSettings: (file: string) => any
   saveSettings: (file: string, settings: any, now: string) => void
   getSecret: (name: string, plat: Platform, paths: Paths) => Promise<string | null>
-  writeLiveCredential: (value: string, plat: Platform, paths: Paths, now: string) => Promise<void>
+  writeLiveCredential: (value: string, plat: Platform, paths: Paths) => Promise<void>
   neutralizeLiveCredential: (plat: Platform, paths: Paths) => Promise<void>
   readActive: (paths: Paths) => { name: string; managedKeys: string[] } | null
   writeActive: (state: { name: string; managedKeys: string[] }, paths: Paths) => void
@@ -28,7 +28,7 @@ export async function globalSwitch(profile: Profile, deps: SwitchDeps): Promise<
       const secret = await deps.getSecret(profile.name, deps.plat, deps.paths)
       if (secret === null) throw new Error(`No stored credential for profile '${profile.name}'. Run: ccswitch save ${profile.name}`)
       desired = { env: {}, apiKeyHelper: null }
-      applyCredential = () => deps.writeLiveCredential(secret, deps.plat, deps.paths, deps.now)
+      applyCredential = () => deps.writeLiveCredential(secret, deps.plat, deps.paths)
       break
     }
     case 'api-key': {
