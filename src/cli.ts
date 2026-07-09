@@ -215,6 +215,7 @@ export async function runCli(
         writeLiveCredential, neutralizeLiveCredential,
         readActive, writeActive,
         writeApiKeyHelper: (prof) => buildApiKeyHelperCommand(prof, plat, p),
+        loadProfile, readLiveCredential, setSecret,
       })
       process.stdout.write(`Switched to '${target}'. Restart desktop app / IDE to pick up the change.\n`)
     })

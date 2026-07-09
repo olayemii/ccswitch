@@ -20,6 +20,9 @@ function baseDeps(overrides = {}) {
       readActive: vi.fn().mockReturnValue(null),
       writeActive: vi.fn(),
       writeApiKeyHelper: vi.fn().mockResolvedValue("cat '/cc/secrets/k'"),
+      loadProfile: vi.fn(),
+      readLiveCredential: vi.fn().mockResolvedValue(null),
+      setSecret: vi.fn().mockResolvedValue(undefined),
       ...overrides,
     },
   }
@@ -50,6 +53,40 @@ describe('globalSwitch', () => {
     expect(t.savedRef().env.CLAUDE_CODE_USE_BEDROCK).toBe('1')
     expect(t.savedRef().env.AWS_PROFILE).toBe('p')
     expect(t.deps.neutralizeLiveCredential).toHaveBeenCalled()
+  })
+
+  it('re-snapshots the outgoing login profile live credential before switching away', async () => {
+    const t = baseDeps({
+      readActive: vi.fn().mockReturnValue({ name: 'work', managedKeys: [] }),
+      loadProfile: vi.fn().mockReturnValue({ name: 'work', type: 'login', env: {} }),
+      readLiveCredential: vi.fn().mockResolvedValue('fresh-rotated-cred'),
+    })
+    await globalSwitch({ name: 'k', type: 'api-key', env: {} }, t.deps as any)
+    expect(t.deps.setSecret).toHaveBeenCalledWith('work', 'fresh-rotated-cred', 'linux', t.paths)
+    // and it must happen before we neutralize the live credential
+    const setOrder = t.deps.setSecret.mock.invocationCallOrder[0]
+    const neutralizeOrder = t.deps.neutralizeLiveCredential.mock.invocationCallOrder[0]
+    expect(setOrder).toBeLessThan(neutralizeOrder)
+  })
+
+  it('does not re-snapshot when the outgoing profile is not a login profile', async () => {
+    const t = baseDeps({
+      readActive: vi.fn().mockReturnValue({ name: 'bd', managedKeys: [] }),
+      loadProfile: vi.fn().mockReturnValue({ name: 'bd', type: 'bedrock', env: {} }),
+      readLiveCredential: vi.fn().mockResolvedValue('should-not-be-read'),
+    })
+    await globalSwitch({ name: 'k', type: 'api-key', env: {} }, t.deps as any)
+    expect(t.deps.setSecret).not.toHaveBeenCalled()
+  })
+
+  it('does not re-snapshot when no live credential is present for the outgoing login', async () => {
+    const t = baseDeps({
+      readActive: vi.fn().mockReturnValue({ name: 'work', managedKeys: [] }),
+      loadProfile: vi.fn().mockReturnValue({ name: 'work', type: 'login', env: {} }),
+      readLiveCredential: vi.fn().mockResolvedValue(null),
+    })
+    await globalSwitch({ name: 'k', type: 'api-key', env: {} }, t.deps as any)
+    expect(t.deps.setSecret).not.toHaveBeenCalled()
   })
 
   it('clears keys managed by the previous profile', async () => {

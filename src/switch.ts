@@ -14,11 +14,26 @@ export interface SwitchDeps {
   readActive: (paths: Paths) => { name: string; managedKeys: string[] } | null
   writeActive: (state: { name: string; managedKeys: string[] }, paths: Paths) => void
   writeApiKeyHelper: (profile: Profile) => string | Promise<string>
+  loadProfile: (name: string, paths: Paths) => Profile
+  readLiveCredential: (plat: Platform, paths: Paths) => Promise<string | null>
+  setSecret: (name: string, value: string, plat: Platform, paths: Paths) => Promise<void>
 }
 
 export async function globalSwitch(profile: Profile, deps: SwitchDeps): Promise<void> {
   const prev = deps.readActive(deps.paths)
   const prevManaged = prev?.managedKeys ?? []
+
+  // Claude Code rotates the live OAuth credential as it runs, invalidating the
+  // copy captured at `save` time. Before we switch away from a login profile,
+  // re-snapshot the current live credential into its store so switching back
+  // restores a valid credential instead of a stale one (which forces relogin).
+  if (prev && prev.name !== profile.name) {
+    const prevProfile = deps.loadProfile(prev.name, deps.paths)
+    if (prevProfile?.type === 'login') {
+      const live = await deps.readLiveCredential(deps.plat, deps.paths)
+      if (live !== null) await deps.setSecret(prev.name, live, deps.plat, deps.paths)
+    }
+  }
 
   let desired: DesiredSettings
   let applyCredential: () => Promise<void>
