@@ -70,6 +70,13 @@ import { loadProfile as loadProf } from '../src/profiles.js'
 import { writeFileSync, mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 
+function shortTermKey(amzDate: string, expiresSec: number): string {
+  const url = 'https://bedrock-runtime.us-east-1.amazonaws.com/?X-Amz-Algorithm=AWS4-HMAC-SHA256'
+    + `&X-Amz-Date=${amzDate}&X-Amz-Expires=${expiresSec}`
+    + '&X-Amz-SignedHeaders=host&X-Amz-Signature=deadbeef'
+  return 'bedrock-api-key-' + Buffer.from(url, 'utf8').toString('base64')
+}
+
 d2('cli save/token', () => {
   i2('save api-key stores secret from live settings env', async () => {
     const p = paths(process.env, 'linux')
@@ -91,6 +98,15 @@ d2('cli save/token', () => {
     e2(prof.type).toBe('bedrock-key')
     e2(prof.env.CLAUDE_CODE_USE_BEDROCK).toBe('1')
     e2(prof.env.AWS_REGION).toBe('eu-west-1')
+  })
+
+  i2('save --type bedrock-key records credExpiresAt from a short-term token', async () => {
+    const p = paths(process.env, 'linux')
+    const token = shortTermKey('20260711T000000Z', 43200)
+    const env = { ...process.env, AWS_BEARER_TOKEN_BEDROCK: token }
+    const code = await runCli(['save', 'brk', '--type', 'bedrock-key'], { platform: 'linux', env })
+    e2(code).toBe(0)
+    e2(loadProf('brk', p).credExpiresAt).toBe('2026-07-11T12:00:00.000Z')
   })
 
   i2('save bedrock-key errors when AWS_BEARER_TOKEN_BEDROCK is unset', async () => {

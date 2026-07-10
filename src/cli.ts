@@ -19,6 +19,7 @@ import { captureLogin } from './loginCapture.js'
 import { readOAuthAccount, writeOAuthAccount } from './oauthAccount.js'
 import { tokenStaleWarning } from './tokenAge.js'
 import { diagnose, describeActive, type DoctorSnapshot, type ProfileState } from './doctor.js'
+import { deriveBedrockKeyExpiry, describeBedrockExpiry, bedrockExpiredMessage, bedrockExpiringWarning } from './bedrockExpiry.js'
 
 function nowIso(): string {
   // Injected-free deterministic-ish timestamp; Date is allowed at runtime (not in workflow scripts).
@@ -246,6 +247,8 @@ export async function runCli(
         if (!token) throw new Error('No AWS_BEARER_TOKEN_BEDROCK in environment to snapshot.')
         await setSecret(name, token, plat, p)
         profile.env = { CLAUDE_CODE_USE_BEDROCK: '1', ...(env.AWS_REGION ? { AWS_REGION: env.AWS_REGION } : {}) }
+        const exp = deriveBedrockKeyExpiry(token)
+        if (exp) profile.credExpiresAt = exp
       } else {
         const settings = loadSettings(p.settingsFile)
         profile.env = {
@@ -302,6 +305,8 @@ export async function runCli(
         if (clack.isCancel(region)) return
         await setSecret(name, token, plat, p)
         profile.env = { CLAUDE_CODE_USE_BEDROCK: '1', ...(region ? { AWS_REGION: region } : {}) }
+        const exp = deriveBedrockKeyExpiry(token)
+        if (exp) profile.credExpiresAt = exp
       } else if (type === 'bedrock') {
         const awsProfile = (await clack.text({ message: 'AWS_PROFILE' })) as string
         const region = (await clack.text({ message: 'AWS_REGION' })) as string
