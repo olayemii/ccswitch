@@ -196,7 +196,7 @@ function checkActiveConsistency(active: Profile, snap: DoctorSnapshot, findings:
       break
     case 'bedrock-key':
       if (!env.AWS_BEARER_TOKEN_BEDROCK) {
-        findings.push({ level: 'error', message: `Active profile '${active.name}' is bedrock-key, but AWS_BEARER_TOKEN_BEDROCK is not set in settings.json. Re-switch: ccswitch ${active.name}` })
+        findings.push({ level: 'error', message: `Active profile '${active.name}' is bedrock-key, but AWS_BEARER_TOKEN_BEDROCK is not set in settings.json. Re-switch: ccswitch ${active.name} (or, if the token has expired, ccswitch refresh ${active.name}).` })
       }
       break
   }
