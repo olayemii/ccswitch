@@ -94,3 +94,10 @@ export function bedrockExpiringWarning(profile: Profile, now: Date): string | nu
     `Refresh soon: ccswitch refresh ${profile.name}`
   )
 }
+
+// Warning text for a failed SigV4 liveness probe, or null when it passed.
+export function bedrockLivenessWarning(awsProfile: string, exitCode: number): string | null {
+  if (exitCode === 0) return null
+  return `Bedrock SigV4 credentials for AWS_PROFILE='${awsProfile}' failed a liveness check ` +
+    `(aws sts get-caller-identity exited ${exitCode}). They may be expired — run your AWS login (e.g. aws sso login).`
+}

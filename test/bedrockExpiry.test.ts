@@ -5,6 +5,7 @@ import {
   describeBedrockExpiry,
   bedrockExpiredMessage,
   bedrockExpiringWarning,
+  bedrockLivenessWarning,
   BEDROCK_EXPIRING_MS,
 } from '../src/bedrockExpiry.js'
 import type { Profile } from '../src/types.js'
@@ -108,5 +109,16 @@ describe('bedrockExpiringWarning', () => {
     const w = bedrockExpiringWarning(keyProfile({ credExpiresAt: atOffsetMs(BEDROCK_EXPIRING_MS - 60_000) }), NOW)
     expect(w).toContain("Profile 'work' Bedrock token expires in")
     expect(w).toContain('ccswitch refresh work')
+  })
+})
+
+describe('bedrockLivenessWarning', () => {
+  it('is null on success', () => {
+    expect(bedrockLivenessWarning('dev', 0)).toBeNull()
+  })
+  it('warns on failure, naming the profile', () => {
+    const w = bedrockLivenessWarning('dev', 255)
+    expect(w).toContain("AWS_PROFILE='dev'")
+    expect(w).toContain('liveness check')
   })
 })

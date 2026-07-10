@@ -14,12 +14,12 @@ import { setSecret } from './secretStore.js'
 import { saveProfile } from './profiles.js'
 import { isAuthType, type Profile, type Platform } from './types.js'
 import { hashCredential, findDuplicateLoginName } from './fingerprint.js'
-import { runInteractive } from './exec.js'
+import { runInteractive, run } from './exec.js'
 import { captureLogin } from './loginCapture.js'
 import { readOAuthAccount, writeOAuthAccount } from './oauthAccount.js'
 import { tokenStaleWarning } from './tokenAge.js'
 import { diagnose, describeActive, type DoctorSnapshot, type ProfileState } from './doctor.js'
-import { deriveBedrockKeyExpiry, describeBedrockExpiry, bedrockExpiredMessage, bedrockExpiringWarning } from './bedrockExpiry.js'
+import { deriveBedrockKeyExpiry, describeBedrockExpiry, bedrockExpiredMessage, bedrockExpiringWarning, bedrockLivenessWarning } from './bedrockExpiry.js'
 
 function nowIso(): string {
   // Injected-free deterministic-ish timestamp; Date is allowed at runtime (not in workflow scripts).
@@ -398,7 +398,8 @@ export async function runCli(
   // Bare name → global switch (default command).
   program
     .argument('[name]', 'profile to switch to globally')
-    .action(async (name: string | undefined) => {
+    .option('--check', 'for a bedrock (SigV4) profile, probe credential validity via aws sts get-caller-identity')
+    .action(async (name: string | undefined, opts: { check?: boolean }) => {
       let target = name
       if (!target) {
         const profiles = listProfiles(p)
@@ -428,6 +429,16 @@ export async function runCli(
       process.stdout.write(`Switched to '${target}'. Restart desktop app / IDE to pick up the change.\n`)
       if (result.warning) {
         process.stderr.write(`\nWarning: ${result.warning}\n`)
+      }
+      if (opts.check && profile.type === 'bedrock') {
+        const awsProfile = profile.env.AWS_PROFILE ?? ''
+        try {
+          const r = await run('aws', ['sts', 'get-caller-identity', '--profile', awsProfile])
+          const w = bedrockLivenessWarning(awsProfile, r.code)
+          if (w) process.stderr.write(`\nWarning: ${w}\n`)
+        } catch (err: any) {
+          process.stderr.write(`\nWarning: liveness check could not run (${err?.message ?? err}). Is the AWS CLI installed?\n`)
+        }
       }
     })
 
