@@ -106,6 +106,10 @@ export async function runCli(
       if (!name) throw new Error('Usage: ccswitch env <name> | ccswitch env --unset')
       if (!profileExists(name, p)) throw new Error(`Unknown profile: ${name}. See: ccswitch list`)
       const profile = loadProfile(name, p)
+      const expiredMsg = bedrockExpiredMessage(profile, new Date())
+      if (expiredMsg) throw new Error(expiredMsg)
+      const expiringMsg = bedrockExpiringWarning(profile, new Date())
+      if (expiringMsg) process.stderr.write(`Warning: ${expiringMsg}\n`)
       const secret = await getSecret(name, plat, p, { slot: profile.type === 'login' ? 'token' : 'secret' })
       const stale = tokenStaleWarning(profile, new Date())
       if (stale) process.stderr.write(`Warning: ${stale}\n`)
@@ -408,6 +412,10 @@ export async function runCli(
       }
       if (!profileExists(target, p)) throw new Error(`Unknown profile: ${target}. See: ccswitch list`)
       const profile = loadProfile(target, p)
+      const expiredMsg = bedrockExpiredMessage(profile, new Date())
+      if (expiredMsg) throw new Error(expiredMsg)
+      const expiringMsg = bedrockExpiringWarning(profile, new Date())
+      if (expiringMsg) process.stderr.write(`Warning: ${expiringMsg}\n`)
       const result = await globalSwitch(profile, {
         plat, paths: p, now: nowIso(),
         loadSettings, saveSettings, getSecret,

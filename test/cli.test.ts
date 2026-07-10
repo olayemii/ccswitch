@@ -332,4 +332,37 @@ d2('cli save/token', () => {
     e2(printed).toContain('the-token')
     e2(printed).not.toContain('the-credential')
   })
+
+  i2('blocks a global switch to an expired bedrock-key profile', async () => {
+    const p = paths(process.env, 'linux')
+    saveProfile({ name: 'brk', type: 'bedrock-key', env: { CLAUDE_CODE_USE_BEDROCK: '1' }, credExpiresAt: '2000-01-01T00:00:00.000Z' }, p)
+    await setSec('brk', 'some-token', 'linux', p)
+    const code = await runCli(['brk'], { platform: 'linux' })
+    e2(code).toBe(1)                         // thrown → runCli returns 1
+  })
+
+  i2('blocks env for an expired bedrock-key profile', async () => {
+    const p = paths(process.env, 'linux')
+    saveProfile({ name: 'brk', type: 'bedrock-key', env: { CLAUDE_CODE_USE_BEDROCK: '1' }, credExpiresAt: '2000-01-01T00:00:00.000Z' }, p)
+    await setSec('brk', 'some-token', 'linux', p)
+    const code = await runCli(['env', 'brk'], { platform: 'linux' })
+    e2(code).toBe(1)
+  })
+
+  i2('warns (does not block) an env for an expiring bedrock-key profile', async () => {
+    const p = paths(process.env, 'linux')
+    const soon = new Date(Date.now() + 10 * 60 * 1000).toISOString()   // 10 min out
+    saveProfile({ name: 'brk', type: 'bedrock-key', env: { CLAUDE_CODE_USE_BEDROCK: '1' }, credExpiresAt: soon }, p)
+    await setSec('brk', 'some-token', 'linux', p)
+    const err: string[] = []
+    const origErr = process.stderr.write
+    process.stderr.write = ((s: string) => { err.push(String(s)); return true }) as any
+    try {
+      const code = await runCli(['env', 'brk'], { platform: 'linux' })
+      e2(code).toBe(0)                       // not blocked
+      e2(err.join('')).toMatch(/expires in/)
+    } finally {
+      process.stderr.write = origErr
+    }
+  })
 })
