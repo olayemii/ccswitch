@@ -40,6 +40,8 @@ ccswitch token <name>       capture a long-lived OAuth token (claude setup-token
                             for a login profile, enabling per-shell on macOS
 ccswitch list               show profiles, mark the active one, show types
 ccswitch current            print active profile
+ccswitch doctor             diagnose active profile (name, type, config,
+                            masked credential, account, token age)
 ccswitch remove <name>      delete a profile (+ its secret and isolated dir)
 ```
 
@@ -66,6 +68,30 @@ store.
   ```bash
   unset CLAUDE_CODE_USE_BEDROCK AWS_BEARER_TOKEN_BEDROCK AWS_REGION AWS_PROFILE
   ```
+
+## Doctor
+
+```bash
+ccswitch doctor
+```
+
+Diagnoses the active profile, showing its authentication details and configuration:
+
+```
+Active profile details:
+  name:        work
+  type:        bedrock-key
+  config dir:  (default)
+  credential:  sk-ant…a3f9 (len 108)
+```
+
+Fields shown depend on profile type:
+- **All types:** name, type, config directory (path or "(default)")
+- **api-key / bedrock-key:** `credential:` — a masked preview of the stored secret (first 6 characters + last 4 characters + total length; secrets under 12 characters show only the last 4 characters)
+- **login:** `account:` (email — org, or email alone) and `token:` (captured N days ago (YYYY-MM-DD), or "present, capture date unknown", or "none captured")
+- **No active profile:** a single line: `No active profile.`
+
+Secrets are always masked — a full secret is never printed.
 
 ## Per-shell switch
 
