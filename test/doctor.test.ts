@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { diagnose, maskSecret, type DoctorSnapshot, type Finding } from '../src/doctor.js'
+import { diagnose, maskSecret, describeActive, type DoctorSnapshot, type Finding } from '../src/doctor.js'
 import type { Profile } from '../src/types.js'
 
 const now = new Date('2026-07-10T00:00:00Z')
@@ -138,5 +138,26 @@ describe('maskSecret', () => {
   it('returns (none) for null or undefined', () => {
     expect(maskSecret(null)).toBe('(none)')
     expect(maskSecret(undefined)).toBe('(none)')
+  })
+})
+
+describe('describeActive', () => {
+  it('returns a single line when there is no active profile', () => {
+    expect(describeActive(snap())).toEqual(['No active profile.'])
+  })
+
+  it('describes a bedrock profile with name, type and default config dir', () => {
+    const profile: Profile = { name: 'br', type: 'bedrock', env: { CLAUDE_CODE_USE_BEDROCK: '1' } }
+    const lines = describeActive(snap({
+      profiles: [profile],
+      active: { name: 'br', managedKeys: [] },
+      profileStates: { br: { hasSecret: false, hasToken: false, configDirExists: false } },
+    }))
+    expect(lines[0]).toBe('Active profile details:')
+    expect(lines.join('\n')).toContain('name:        br')
+    expect(lines.join('\n')).toContain('type:        bedrock')
+    expect(lines.join('\n')).toContain('config dir:  (default)')
+    expect(lines.join('\n')).not.toContain('credential:')
+    expect(lines.join('\n')).not.toContain('account:')
   })
 })

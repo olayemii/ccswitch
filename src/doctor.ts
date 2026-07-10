@@ -99,6 +99,27 @@ export function diagnose(snap: DoctorSnapshot): Finding[] {
   return findings
 }
 
+// Human-readable details for the active profile only. Pure: reads everything
+// from the snapshot. Returns display lines (no icons). diagnose() reports drift;
+// this shows identity — who/what you are actually running as.
+export function describeActive(snap: DoctorSnapshot): string[] {
+  if (snap.active === null) return ['No active profile.']
+  const profile = snap.profiles.find((p) => p.name === snap.active!.name)
+  if (!profile) return ['No active profile.']
+
+  const st = snap.profileStates[profile.name]
+  const lines: string[] = ['Active profile details:']
+  lines.push(`  name:        ${profile.name}`)
+  lines.push(`  type:        ${profile.type}`)
+  lines.push(`  config dir:  ${profile.configDir ?? '(default)'}`)
+
+  if (profile.type === 'api-key' || profile.type === 'bedrock-key') {
+    lines.push(`  credential:  ${st?.secretPreview ? maskSecret(st.secretPreview) : '(missing)'}`)
+  }
+
+  return lines
+}
+
 function checkActiveConsistency(active: Profile, snap: DoctorSnapshot, findings: Finding[]): void {
   const env = snap.settings?.env ?? {}
   const hasHelper = typeof snap.settings?.apiKeyHelper === 'string'
