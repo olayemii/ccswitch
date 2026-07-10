@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { diagnose, type DoctorSnapshot, type Finding } from '../src/doctor.js'
+import { diagnose, maskSecret, type DoctorSnapshot, type Finding } from '../src/doctor.js'
 import type { Profile } from '../src/types.js'
 
 const now = new Date('2026-07-10T00:00:00Z')
@@ -122,5 +122,21 @@ describe('diagnose', () => {
       profileStates: { work: { hasSecret: true, hasToken: true, configDirExists: false } },
     }))
     expect(warns(fs).some((f) => /may have expired/.test(f.message))).toBe(true)
+  })
+})
+
+describe('maskSecret', () => {
+  it('shows first 6 and last 4 with length for long secrets', () => {
+    expect(maskSecret('sk-ant-api03-abcdefghij-a3f9')).toBe('sk-ant…a3f9 (len 28)')
+  })
+  it('shows only last 4 with length for short secrets', () => {
+    expect(maskSecret('abcdef')).toBe('…cdef (len 6)')
+  })
+  it('returns (none) for empty string', () => {
+    expect(maskSecret('')).toBe('(none)')
+  })
+  it('returns (none) for null or undefined', () => {
+    expect(maskSecret(null)).toBe('(none)')
+    expect(maskSecret(undefined)).toBe('(none)')
   })
 })

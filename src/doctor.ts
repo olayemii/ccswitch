@@ -2,6 +2,15 @@ import type { Profile, ActiveState } from './types.js'
 import { tokenStaleWarning } from './tokenAge.js'
 
 export type FindingLevel = 'ok' | 'warn' | 'error'
+
+// Mask a stored secret for display: never reveal the full value. Long secrets
+// show first-6 + last-4; short ones show only last-4 to avoid over-exposure.
+export function maskSecret(value: string | null | undefined): string {
+  if (!value) return '(none)'
+  const len = value.length
+  if (len >= 12) return `${value.slice(0, 6)}…${value.slice(-4)} (len ${len})`
+  return `…${value.slice(-4)} (len ${len})`
+}
 export interface Finding {
   level: FindingLevel
   message: string
