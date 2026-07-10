@@ -5,16 +5,17 @@ import { listProfiles, loadProfile, readActive, removeProfile, profileExists, wr
 import { getSecret, deleteSecret } from './secretStore.js'
 import { buildEnvExport, buildEnvUnset } from './envexport.js'
 import { loadSettings, saveSettings } from './settings.js'
-import { writeLiveCredential, neutralizeLiveCredential } from './credentials.js'
+import { writeLiveCredential, neutralizeLiveCredential, readLiveCredential, readAuthStatus } from './credentials.js'
 import { buildApiKeyHelperCommand, captureOAuthToken } from './helpers.js'
 import { globalSwitch } from './switch.js'
 import { rmSync, existsSync, mkdirSync, cpSync } from 'node:fs'
 import * as clack from '@clack/prompts'
 import { setSecret } from './secretStore.js'
-import { readLiveCredential } from './credentials.js'
 import { saveProfile } from './profiles.js'
 import { isAuthType, type Profile, type Platform } from './types.js'
 import { hashCredential, findDuplicateLoginName } from './fingerprint.js'
+import { runInteractive } from './exec.js'
+import { captureLogin } from './loginCapture.js'
 
 function nowIso(): string {
   // Injected-free deterministic-ish timestamp; Date is allowed at runtime (not in workflow scripts).
@@ -218,30 +219,38 @@ export async function runCli(
         const region = (await clack.text({ message: 'AWS_REGION' })) as string
         profile.env = { CLAUDE_CODE_USE_BEDROCK: '1', AWS_PROFILE: awsProfile, AWS_REGION: region }
       } else {
-        const ready = await clack.confirm({
-          message: `Log in as the account for '${name}' in Claude Code (run /login as that account), then confirm to capture.`,
-          initialValue: true,
+        clack.log.info(`Launching 'claude auth login' — sign in as the account for '${name}'.`)
+        const result = await captureLogin({
+          profileName: name,
+          profiles: listProfiles(p),
+          runInteractive: (cmd, args) => runInteractive(cmd, args),
+          readAuthStatus: () => readAuthStatus(),
+          readLiveCredential: () => readLiveCredential(plat, p),
+          writeLiveCredential: (value) => writeLiveCredential(value, plat, p),
+          neutralizeLiveCredential: () => neutralizeLiveCredential(plat, p),
+          setSecret: (value) => setSecret(name, value, plat, p),
+          confirmDuplicate: async (dupName) => {
+            const proceed = await clack.confirm({
+              message: `This credential is identical to profile '${dupName}' — you probably didn't log in as a different account. Store it anyway?`,
+              initialValue: false,
+            })
+            return !clack.isCancel(proceed) && proceed === true
+          },
+          afterCapture: async () => {
+            const wantToken = await clack.confirm({ message: 'Capture OAuth token for per-shell use?', initialValue: false })
+            if (wantToken === true) {
+              try {
+                const token = await captureOAuthToken()
+                await setSecret(name, token, plat, p, { slot: 'token' })
+                profile.hasToken = true
+              } catch (err: any) {
+                process.stderr.write(`Warning: OAuth token capture skipped: ${err?.message ?? err}\n`)
+              }
+            }
+          },
         })
-        if (clack.isCancel(ready) || ready !== true) return
-        const cred = await readLiveCredential(plat, p)
-        if (!cred) throw new Error('No live login found. Run /login first, then re-run add.')
-        const credHash = hashCredential(cred)
-        const dup = findDuplicateLoginName(credHash, listProfiles(p), name)
-        if (dup) {
-          const proceed = await clack.confirm({
-            message: `This credential is identical to profile '${dup}' — you probably didn't log in as a different account. Store it anyway?`,
-            initialValue: false,
-          })
-          if (clack.isCancel(proceed) || proceed !== true) return
-        }
-        await setSecret(name, cred, plat, p)
-        profile.credHash = credHash
-        const wantToken = await clack.confirm({ message: 'Capture OAuth token for per-shell use?', initialValue: false })
-        if (wantToken === true) {
-          const token = await captureOAuthToken()
-          await setSecret(name, token, plat, p, { slot: 'token' })
-          profile.hasToken = true
-        }
+        if (result == null) return
+        profile.credHash = result.credHash
       }
       const isolate = await clack.confirm({ message: 'Isolate config (separate settings/history/MCP)?', initialValue: false })
       if (isolate === true) {

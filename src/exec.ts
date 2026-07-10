@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process'
+import { execFile, spawn as realSpawn } from 'node:child_process'
 
 export function run(
   cmd: string,
@@ -13,5 +13,18 @@ export function run(
     if (opts.input !== undefined) {
       child.stdin?.end(opts.input)
     }
+  })
+}
+
+export function runInteractive(
+  cmd: string,
+  args: string[],
+  deps: { spawn?: typeof realSpawn } = {},
+): Promise<{ code: number }> {
+  const spawn = deps.spawn ?? realSpawn
+  return new Promise((resolve) => {
+    const child = spawn(cmd, args, { stdio: 'inherit' })
+    child.on('close', (code) => resolve({ code: code ?? 0 }))
+    child.on('error', () => resolve({ code: 1 }))
   })
 }

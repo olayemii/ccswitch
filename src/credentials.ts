@@ -38,3 +38,17 @@ export async function neutralizeLiveCredential(plat: Platform, paths: Paths, dep
   }
   if (existsSync(paths.credentialsFile)) rmSync(paths.credentialsFile)
 }
+
+export async function readAuthStatus(
+  deps: Deps = {},
+): Promise<{ loggedIn: boolean; email?: string }> {
+  const run = deps.run ?? realRun
+  const r = await run('claude', ['auth', 'status', '--json'])
+  if (r.code !== 0) return { loggedIn: false }
+  try {
+    const parsed = JSON.parse(r.stdout)
+    return { loggedIn: parsed.loggedIn === true, email: parsed.email }
+  } catch {
+    return { loggedIn: false }
+  }
+}

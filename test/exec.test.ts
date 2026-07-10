@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { run } from '../src/exec.js'
+import { run, runInteractive } from '../src/exec.js'
 
 describe('run', () => {
   it('captures stdout and code 0', async () => {
@@ -14,5 +14,16 @@ describe('run', () => {
   it('passes stdin input', async () => {
     const r = await run('node', ['-e', 'process.stdin.pipe(process.stdout)'], { input: 'abc' })
     expect(r.stdout).toBe('abc')
+  })
+})
+
+describe('runInteractive', () => {
+  it('inherits stdio and resolves with exit code 0', async () => {
+    const r = await runInteractive('node', ['-e', 'process.exit(0)'])
+    expect(r.code).toBe(0)
+  })
+  it('resolves with a non-zero exit code without throwing', async () => {
+    const r = await runInteractive('node', ['-e', 'process.exit(7)'])
+    expect(r.code).toBe(7)
   })
 })
