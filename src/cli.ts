@@ -218,9 +218,24 @@ export async function runCli(
         const region = (await clack.text({ message: 'AWS_REGION' })) as string
         profile.env = { CLAUDE_CODE_USE_BEDROCK: '1', AWS_PROFILE: awsProfile, AWS_REGION: region }
       } else {
+        const ready = await clack.confirm({
+          message: `Log in as the account for '${name}' in Claude Code (run /login as that account), then confirm to capture.`,
+          initialValue: true,
+        })
+        if (clack.isCancel(ready) || ready !== true) return
         const cred = await readLiveCredential(plat, p)
         if (!cred) throw new Error('No live login found. Run /login first, then re-run add.')
+        const credHash = hashCredential(cred)
+        const dup = findDuplicateLoginName(credHash, listProfiles(p), name)
+        if (dup) {
+          const proceed = await clack.confirm({
+            message: `This credential is identical to profile '${dup}' — you probably didn't log in as a different account. Store it anyway?`,
+            initialValue: false,
+          })
+          if (clack.isCancel(proceed) || proceed !== true) return
+        }
         await setSecret(name, cred, plat, p)
+        profile.credHash = credHash
         const wantToken = await clack.confirm({ message: 'Capture OAuth token for per-shell use?', initialValue: false })
         if (wantToken === true) {
           const token = await captureOAuthToken()
