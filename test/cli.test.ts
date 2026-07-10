@@ -108,6 +108,44 @@ d2('cli save/token', () => {
     }
   })
 
+  i2('save login stores the credential hash on the profile', async () => {
+    const p = paths(process.env, 'linux')
+    mkdirSync(dirname(p.credentialsFile), { recursive: true })
+    writeFileSync(p.credentialsFile, 'live-cred-blob')
+    const code = await runCli(['save', 'personal', '--type', 'login'], { platform: 'linux' })
+    e2(code).toBe(0)
+    const { hashCredential } = await import('../src/fingerprint.js')
+    e2(loadProf('personal', p).credHash).toBe(hashCredential('live-cred-blob'))
+  })
+
+  i2('save login rejects a duplicate credential without --force', async () => {
+    const p = paths(process.env, 'linux')
+    mkdirSync(dirname(p.credentialsFile), { recursive: true })
+    writeFileSync(p.credentialsFile, 'live-cred-blob')
+    await runCli(['save', 'personal', '--type', 'login'], { platform: 'linux' })
+
+    const err: string[] = []
+    const origErrWrite = process.stderr.write
+    process.stderr.write = ((s: string) => { err.push(String(s)); return true }) as any
+    try {
+      const code = await runCli(['save', 'work', '--type', 'login'], { platform: 'linux' })
+      e2(code).toBe(1)
+      e2(err.join('')).toContain('personal')
+    } finally {
+      process.stderr.write = origErrWrite
+    }
+  })
+
+  i2('save login allows a duplicate credential with --force', async () => {
+    const p = paths(process.env, 'linux')
+    mkdirSync(dirname(p.credentialsFile), { recursive: true })
+    writeFileSync(p.credentialsFile, 'live-cred-blob')
+    await runCli(['save', 'personal', '--type', 'login'], { platform: 'linux' })
+    const code = await runCli(['save', 'work', '--type', 'login', '--force'], { platform: 'linux' })
+    e2(code).toBe(0)
+    e2(loadProf('work', p).type).toBe('login')
+  })
+
   i2('help prints an overview of the auth types', async () => {
     const code = await runCli(['help'], { platform: 'linux' })
     e2(code).toBe(0)
