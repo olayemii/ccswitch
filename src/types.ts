@@ -8,6 +8,7 @@ export interface Profile {
   configDir?: string
   hasToken?: boolean
   tokenCapturedAt?: string
+  credExpiresAt?: string   // absolute ISO 8601 expiry for a short-lived bedrock-key token; absent = untracked
   credHash?: string
   oauthAccount?: unknown
 }

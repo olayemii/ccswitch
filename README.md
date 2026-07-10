@@ -38,6 +38,9 @@ ccswitch add                guided setup (login / api-key / bedrock /
 ccswitch help               overview of auth types and common commands
 ccswitch token <name>       capture a long-lived OAuth token (claude setup-token)
                             for a login profile, enabling per-shell on macOS
+ccswitch refresh <name>     replace a bedrock-key profile's bearer token in
+                            place and re-derive its expiry (reads --token or
+                            $AWS_BEARER_TOKEN_BEDROCK)
 ccswitch list               show profiles, mark the active one, show types
 ccswitch current            print active profile
 ccswitch doctor             diagnose active profile (name, type, config,
@@ -160,6 +163,33 @@ other profile removes it again — the token only sits on disk while the
 `bedrock-key` profile is the active global profile. The per-shell flow
 (`ccuse bedrock-prod`) keeps the token in the keychain and exports it only
 into that shell.
+
+## Short-lived Bedrock tokens
+
+Short-term Bedrock API keys (`bedrock-api-key-…`) carry an embedded expiry
+(commonly 12 hours). ccswitch reads that expiry automatically when you `save`,
+`add`, or `refresh` a `bedrock-key` profile — no extra prompts — and records it
+on the profile.
+
+- **doctor / list** show the remaining time, e.g. `expires: in 3h`,
+  `EXPIRING (12m)`, or `EXPIRED (2h ago)`.
+- **Switching** to an expired `bedrock-key` profile (globally or via
+  `ccswitch env`) is **blocked** with a message pointing at `ccswitch refresh`.
+- **`ccswitch refresh <name>`** stores a fresh token (from `--token` or
+  `$AWS_BEARER_TOKEN_BEDROCK`) in place and re-derives the expiry, without
+  recreating the profile.
+
+Long-term keys (`ABSK…`) and any token whose expiry can't be parsed are left
+**untracked** — no warnings and no blocking, exactly as before.
+
+For the SigV4 `bedrock` type (AWS credentials behind a named `AWS_PROFILE`),
+ccswitch doesn't hold the credentials, so it can't track their expiry. Pass
+`--check` on a global switch to run an opt-in `aws sts get-caller-identity`
+liveness probe that warns (never blocks) if the credentials look stale:
+
+```bash
+ccswitch my-bedrock-profile --check
+```
 
 ## macOS keychain caveat
 

@@ -70,6 +70,13 @@ import { loadProfile as loadProf } from '../src/profiles.js'
 import { writeFileSync, mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 
+function shortTermKey(amzDate: string, expiresSec: number): string {
+  const url = 'https://bedrock-runtime.us-east-1.amazonaws.com/?X-Amz-Algorithm=AWS4-HMAC-SHA256'
+    + `&X-Amz-Date=${amzDate}&X-Amz-Expires=${expiresSec}`
+    + '&X-Amz-SignedHeaders=host&X-Amz-Signature=deadbeef'
+  return 'bedrock-api-key-' + Buffer.from(url, 'utf8').toString('base64')
+}
+
 d2('cli save/token', () => {
   i2('save api-key stores secret from live settings env', async () => {
     const p = paths(process.env, 'linux')
@@ -91,6 +98,15 @@ d2('cli save/token', () => {
     e2(prof.type).toBe('bedrock-key')
     e2(prof.env.CLAUDE_CODE_USE_BEDROCK).toBe('1')
     e2(prof.env.AWS_REGION).toBe('eu-west-1')
+  })
+
+  i2('save --type bedrock-key records credExpiresAt from a short-term token', async () => {
+    const p = paths(process.env, 'linux')
+    const token = shortTermKey('20260711T000000Z', 43200)
+    const env = { ...process.env, AWS_BEARER_TOKEN_BEDROCK: token }
+    const code = await runCli(['save', 'brk', '--type', 'bedrock-key'], { platform: 'linux', env })
+    e2(code).toBe(0)
+    e2(loadProf('brk', p).credExpiresAt).toBe('2026-07-11T12:00:00.000Z')
   })
 
   i2('save bedrock-key errors when AWS_BEARER_TOKEN_BEDROCK is unset', async () => {
@@ -158,6 +174,34 @@ d2('cli save/token', () => {
   i2('token requires an existing login profile', async () => {
     const code = await runCli(['token', 'nope'], { platform: 'linux' })
     e2(code).toBe(1)
+  })
+
+  i2('refresh replaces the token in place and updates credExpiresAt', async () => {
+    const p = paths(process.env, 'linux')
+    saveProfile({ name: 'brk', type: 'bedrock-key', env: { CLAUDE_CODE_USE_BEDROCK: '1' }, credExpiresAt: '2026-07-11T00:00:00.000Z' }, p)
+    await setSec('brk', 'old-token', 'linux', p)
+    const newToken = shortTermKey('20260712T000000Z', 43200)
+    const code = await runCli(['refresh', 'brk', '--token', newToken], { platform: 'linux' })
+    e2(code).toBe(0)
+    const saved = loadProf('brk', p)
+    e2(saved.credExpiresAt).toBe('2026-07-12T12:00:00.000Z')
+    e2(saved.type).toBe('bedrock-key')            // profile not recreated
+    e2(await getSec('brk', 'linux', p)).toBe(newToken)
+  })
+
+  i2('refresh rejects a non-bedrock-key profile', async () => {
+    const p = paths(process.env, 'linux')
+    saveProfile({ name: 'api', type: 'api-key', env: {} }, p)
+    const code = await runCli(['refresh', 'api', '--token', 'x'], { platform: 'linux' })
+    e2(code).toBe(1)                              // runCli returns 1 on thrown errors
+  })
+
+  i2('list shows EXPIRED badge for a bedrock-key profile past its expiry', async () => {
+    const p = paths(process.env, 'linux')
+    saveProfile({ name: 'brk', type: 'bedrock-key', env: {}, credExpiresAt: '2000-01-01T00:00:00.000Z' }, p)
+    const code = await runCli(['list'], { platform: 'linux' })
+    e2(code).toBe(0)
+    e2(out.join('')).toMatch(/brk \(bedrock-key\).*EXPIRED/)
   })
 
   i2('save with an invalid (path-traversal) profile name is rejected', async () => {
@@ -287,5 +331,38 @@ d2('cli save/token', () => {
     e2(printed).toContain('CLAUDE_CODE_OAUTH_TOKEN')
     e2(printed).toContain('the-token')
     e2(printed).not.toContain('the-credential')
+  })
+
+  i2('blocks a global switch to an expired bedrock-key profile', async () => {
+    const p = paths(process.env, 'linux')
+    saveProfile({ name: 'brk', type: 'bedrock-key', env: { CLAUDE_CODE_USE_BEDROCK: '1' }, credExpiresAt: '2000-01-01T00:00:00.000Z' }, p)
+    await setSec('brk', 'some-token', 'linux', p)
+    const code = await runCli(['brk'], { platform: 'linux' })
+    e2(code).toBe(1)                         // thrown → runCli returns 1
+  })
+
+  i2('blocks env for an expired bedrock-key profile', async () => {
+    const p = paths(process.env, 'linux')
+    saveProfile({ name: 'brk', type: 'bedrock-key', env: { CLAUDE_CODE_USE_BEDROCK: '1' }, credExpiresAt: '2000-01-01T00:00:00.000Z' }, p)
+    await setSec('brk', 'some-token', 'linux', p)
+    const code = await runCli(['env', 'brk'], { platform: 'linux' })
+    e2(code).toBe(1)
+  })
+
+  i2('warns (does not block) an env for an expiring bedrock-key profile', async () => {
+    const p = paths(process.env, 'linux')
+    const soon = new Date(Date.now() + 10 * 60 * 1000).toISOString()   // 10 min out
+    saveProfile({ name: 'brk', type: 'bedrock-key', env: { CLAUDE_CODE_USE_BEDROCK: '1' }, credExpiresAt: soon }, p)
+    await setSec('brk', 'some-token', 'linux', p)
+    const err: string[] = []
+    const origErr = process.stderr.write
+    process.stderr.write = ((s: string) => { err.push(String(s)); return true }) as any
+    try {
+      const code = await runCli(['env', 'brk'], { platform: 'linux' })
+      e2(code).toBe(0)                       // not blocked
+      e2(err.join('')).toMatch(/expires in/)
+    } finally {
+      process.stderr.write = origErr
+    }
   })
 })

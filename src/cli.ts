@@ -14,11 +14,12 @@ import { setSecret } from './secretStore.js'
 import { saveProfile } from './profiles.js'
 import { isAuthType, type Profile, type Platform } from './types.js'
 import { hashCredential, findDuplicateLoginName } from './fingerprint.js'
-import { runInteractive } from './exec.js'
+import { runInteractive, run } from './exec.js'
 import { captureLogin } from './loginCapture.js'
 import { readOAuthAccount, writeOAuthAccount } from './oauthAccount.js'
 import { tokenStaleWarning } from './tokenAge.js'
 import { diagnose, describeActive, type DoctorSnapshot, type ProfileState } from './doctor.js'
+import { deriveBedrockKeyExpiry, describeBedrockExpiry, bedrockExpiredMessage, bedrockExpiringWarning, bedrockLivenessWarning } from './bedrockExpiry.js'
 
 function nowIso(): string {
   // Injected-free deterministic-ish timestamp; Date is allowed at runtime (not in workflow scripts).
@@ -46,7 +47,9 @@ export async function runCli(
       for (const prof of profiles) {
         const mark = prof.name === active ? '* ' : '  '
         const stale = tokenStaleWarning(prof, now) ? '  [stale token]' : ''
-        process.stdout.write(`${mark}${prof.name} (${prof.type})${stale}\n`)
+        const exp = describeBedrockExpiry(prof, now)
+        const expBadge = exp ? `  [expires ${exp}]` : ''
+        process.stdout.write(`${mark}${prof.name} (${prof.type})${stale}${expBadge}\n`)
       }
       for (const prof of profiles) {
         const w = tokenStaleWarning(prof, now)
@@ -80,11 +83,14 @@ export async function runCli(
           '  bedrock-key  Bedrock via API key (bearer token). Sets CLAUDE_CODE_USE_BEDROCK',
           '               and AWS_BEARER_TOKEN_BEDROCK. Global switch writes the token into',
           '               settings.json in PLAINTEXT (cleared when you switch away).',
+          '               Short-term keys expire; ccswitch tracks expiry and blocks switching',
+          '               to an expired one. Refresh with: ccswitch refresh <name>.',
           '',
           'Common commands:',
           '  ccswitch add               guided setup (login / api-key / bedrock / bedrock-key)',
           '  ccswitch save <name> --type <t>   snapshot current live state into a profile',
           '  ccswitch token <name>      capture a per-shell OAuth token (login profiles)',
+          '  ccswitch refresh <name>    replace a bedrock-key token in place (re-derives expiry)',
           '  ccswitch <name>            switch globally (restart desktop app / IDE)',
           '  ccswitch env <name>        print exports for the current shell (see: ccuse)',
           '  ccswitch list | current    show profiles / the active one',
@@ -103,6 +109,10 @@ export async function runCli(
       if (!name) throw new Error('Usage: ccswitch env <name> | ccswitch env --unset')
       if (!profileExists(name, p)) throw new Error(`Unknown profile: ${name}. See: ccswitch list`)
       const profile = loadProfile(name, p)
+      const expiredMsg = bedrockExpiredMessage(profile, new Date())
+      if (expiredMsg) throw new Error(expiredMsg)
+      const expiringMsg = bedrockExpiringWarning(profile, new Date())
+      if (expiringMsg) process.stderr.write(`Warning: ${expiringMsg}\n`)
       const secret = await getSecret(name, plat, p, { slot: profile.type === 'login' ? 'token' : 'secret' })
       const stale = tokenStaleWarning(profile, new Date())
       if (stale) process.stderr.write(`Warning: ${stale}\n`)
@@ -246,6 +256,8 @@ export async function runCli(
         if (!token) throw new Error('No AWS_BEARER_TOKEN_BEDROCK in environment to snapshot.')
         await setSecret(name, token, plat, p)
         profile.env = { CLAUDE_CODE_USE_BEDROCK: '1', ...(env.AWS_REGION ? { AWS_REGION: env.AWS_REGION } : {}) }
+        const exp = deriveBedrockKeyExpiry(token)
+        if (exp) profile.credExpiresAt = exp
       } else {
         const settings = loadSettings(p.settingsFile)
         profile.env = {
@@ -269,6 +281,28 @@ export async function runCli(
       await setSecret(name, token, plat, p, { slot: 'token' })
       saveProfile({ ...profile, hasToken: true, tokenCapturedAt: new Date().toISOString() }, p)
       process.stdout.write(`Captured OAuth token for '${name}'. Per-shell login now works.\n`)
+    })
+
+  program
+    .command('refresh <name>')
+    .option('--token <token>', 'bearer token to store (else read AWS_BEARER_TOKEN_BEDROCK from the environment)')
+    .description('replace a bedrock-key profile\'s token in place and re-derive its expiry')
+    .action(async (name: string, opts: { token?: string }) => {
+      if (!profileExists(name, p)) throw new Error(`Unknown profile: ${name}. See: ccswitch list`)
+      const profile = loadProfile(name, p)
+      if (profile.type !== 'bedrock-key') {
+        throw new Error(`Profile '${name}' is not a bedrock-key profile; refresh only applies to bedrock-key.`)
+      }
+      const token = opts.token ?? env.AWS_BEARER_TOKEN_BEDROCK
+      if (!token) throw new Error('No token to store. Pass --token <t> or set AWS_BEARER_TOKEN_BEDROCK.')
+      await setSecret(name, token, plat, p)
+      const exp = deriveBedrockKeyExpiry(token)
+      const updated: Profile = { ...profile }
+      if (exp) updated.credExpiresAt = exp
+      else delete updated.credExpiresAt   // new token isn't short-term → clear stale expiry
+      saveProfile(updated, p)
+      const badge = exp ? ` (expires ${exp.slice(0, 16).replace('T', ' ')} UTC)` : ''
+      process.stdout.write(`Refreshed Bedrock token for '${name}'.${badge}\n`)
     })
 
   program
@@ -302,6 +336,8 @@ export async function runCli(
         if (clack.isCancel(region)) return
         await setSecret(name, token, plat, p)
         profile.env = { CLAUDE_CODE_USE_BEDROCK: '1', ...(region ? { AWS_REGION: region } : {}) }
+        const exp = deriveBedrockKeyExpiry(token)
+        if (exp) profile.credExpiresAt = exp
       } else if (type === 'bedrock') {
         const awsProfile = (await clack.text({ message: 'AWS_PROFILE' })) as string
         const region = (await clack.text({ message: 'AWS_REGION' })) as string
@@ -365,7 +401,8 @@ export async function runCli(
   // Bare name → global switch (default command).
   program
     .argument('[name]', 'profile to switch to globally')
-    .action(async (name: string | undefined) => {
+    .option('--check', 'for a bedrock (SigV4) profile, probe credential validity via aws sts get-caller-identity')
+    .action(async (name: string | undefined, opts: { check?: boolean }) => {
       let target = name
       if (!target) {
         const profiles = listProfiles(p)
@@ -379,6 +416,10 @@ export async function runCli(
       }
       if (!profileExists(target, p)) throw new Error(`Unknown profile: ${target}. See: ccswitch list`)
       const profile = loadProfile(target, p)
+      const expiredMsg = bedrockExpiredMessage(profile, new Date())
+      if (expiredMsg) throw new Error(expiredMsg)
+      const expiringMsg = bedrockExpiringWarning(profile, new Date())
+      if (expiringMsg) process.stderr.write(`Warning: ${expiringMsg}\n`)
       const result = await globalSwitch(profile, {
         plat, paths: p, now: nowIso(),
         loadSettings, saveSettings, getSecret,
@@ -391,6 +432,16 @@ export async function runCli(
       process.stdout.write(`Switched to '${target}'. Restart desktop app / IDE to pick up the change.\n`)
       if (result.warning) {
         process.stderr.write(`\nWarning: ${result.warning}\n`)
+      }
+      if (opts.check && profile.type === 'bedrock') {
+        const awsProfile = profile.env.AWS_PROFILE ?? ''
+        try {
+          const r = await run('aws', ['sts', 'get-caller-identity', '--profile', awsProfile])
+          const w = bedrockLivenessWarning(awsProfile, r.code)
+          if (w) process.stderr.write(`\nWarning: ${w}\n`)
+        } catch (err: any) {
+          process.stderr.write(`\nWarning: liveness check could not run (${err?.message ?? err}). Is the AWS CLI installed?\n`)
+        }
       }
     })
 
