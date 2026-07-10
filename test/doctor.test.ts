@@ -123,6 +123,15 @@ describe('diagnose', () => {
     }))
     expect(warns(fs).some((f) => /may have expired/.test(f.message))).toBe(true)
   })
+
+  it('diagnose warns when a bedrock-key token is expired', () => {
+    const profile: Profile = { name: 'brk', type: 'bedrock-key', env: {}, credExpiresAt: '2026-07-09T23:00:00.000Z' }
+    const fs = diagnose(snap({
+      profiles: [profile],
+      profileStates: { brk: { hasSecret: true, hasToken: false, configDirExists: false } },
+    }))
+    expect(warns(fs).some((f) => /expired/i.test(f.message))).toBe(true)
+  })
 })
 
 describe('maskSecret', () => {
@@ -253,5 +262,15 @@ describe('describeActive', () => {
     expect(lines.join('\n')).toContain('config dir:  (default)')
     expect(lines.join('\n')).not.toContain('credential:')
     expect(lines.join('\n')).not.toContain('account:')
+  })
+
+  it('describeActive shows an expires line for a tracked bedrock-key active profile', () => {
+    const profile: Profile = { name: 'brk', type: 'bedrock-key', env: {}, credExpiresAt: '2026-07-10T03:00:00.000Z' }
+    const lines = describeActive(snap({
+      profiles: [profile],
+      active: { name: 'brk', managedKeys: [] },
+      profileStates: { brk: { hasSecret: true, hasToken: false, configDirExists: false, secretPreview: 'sk-x' } },
+    }))
+    expect(lines.some((l) => l.includes('expires:') && l.includes('in 3h'))).toBe(true)
   })
 })

@@ -1,5 +1,6 @@
 import type { Profile, ActiveState } from './types.js'
 import { tokenStaleWarning, tokenAgeDays } from './tokenAge.js'
+import { describeBedrockExpiry, bedrockExpiryStatus } from './bedrockExpiry.js'
 
 export type FindingLevel = 'ok' | 'warn' | 'error'
 
@@ -87,6 +88,20 @@ export function diagnose(snap: DoctorSnapshot): Finding[] {
           message: `Profile '${profile.name}' (${profile.type}) has no stored secret. Re-create it: ccswitch add`,
         })
       }
+      if (profile.type === 'bedrock-key') {
+        const bexp = bedrockExpiryStatus(profile, snap.now)
+        if (bexp.state === 'expired') {
+          findings.push({
+            level: 'warn',
+            message: `Bedrock profile '${profile.name}' token has expired. Refresh: ccswitch refresh ${profile.name}`,
+          })
+        } else if (bexp.state === 'expiring') {
+          findings.push({
+            level: 'warn',
+            message: `Bedrock profile '${profile.name}' token expires soon. Refresh: ccswitch refresh ${profile.name}`,
+          })
+        }
+      }
     }
 
     if (profile.configDir && !st.configDirExists) {
@@ -127,6 +142,11 @@ export function describeActive(snap: DoctorSnapshot): string[] {
 
   if (profile.type === 'api-key' || profile.type === 'bedrock-key') {
     lines.push(`  credential:  ${st?.secretPreview ? maskSecret(st.secretPreview) : '(missing)'}`)
+  }
+
+  if (profile.type === 'bedrock-key') {
+    const badge = describeBedrockExpiry(profile, snap.now)
+    if (badge) lines.push(`  expires:     ${badge}`)
   }
 
   if (profile.type === 'login') {

@@ -196,6 +196,14 @@ d2('cli save/token', () => {
     e2(code).toBe(1)                              // runCli returns 1 on thrown errors
   })
 
+  i2('list shows EXPIRED badge for a bedrock-key profile past its expiry', async () => {
+    const p = paths(process.env, 'linux')
+    saveProfile({ name: 'brk', type: 'bedrock-key', env: {}, credExpiresAt: '2000-01-01T00:00:00.000Z' }, p)
+    const code = await runCli(['list'], { platform: 'linux' })
+    e2(code).toBe(0)
+    e2(out.join('')).toMatch(/brk \(bedrock-key\).*EXPIRED/)
+  })
+
   i2('save with an invalid (path-traversal) profile name is rejected', async () => {
     const err: string[] = []
     const origErrWrite = process.stderr.write

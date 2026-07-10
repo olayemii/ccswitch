@@ -47,7 +47,9 @@ export async function runCli(
       for (const prof of profiles) {
         const mark = prof.name === active ? '* ' : '  '
         const stale = tokenStaleWarning(prof, now) ? '  [stale token]' : ''
-        process.stdout.write(`${mark}${prof.name} (${prof.type})${stale}\n`)
+        const exp = describeBedrockExpiry(prof, now)
+        const expBadge = exp ? `  [expires ${exp}]` : ''
+        process.stdout.write(`${mark}${prof.name} (${prof.type})${stale}${expBadge}\n`)
       }
       for (const prof of profiles) {
         const w = tokenStaleWarning(prof, now)
