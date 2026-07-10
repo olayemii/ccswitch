@@ -17,11 +17,15 @@ export interface SwitchDeps {
   loadProfile: (name: string, paths: Paths) => Profile
   readLiveCredential: (plat: Platform, paths: Paths) => Promise<string | null>
   setSecret: (name: string, value: string, plat: Platform, paths: Paths) => Promise<void>
+  readOAuthAccount: (paths: Paths) => unknown
+  writeOAuthAccount: (paths: Paths, account: unknown) => void
+  saveProfile: (profile: Profile, paths: Paths) => void
 }
 
-export async function globalSwitch(profile: Profile, deps: SwitchDeps): Promise<void> {
+export async function globalSwitch(profile: Profile, deps: SwitchDeps): Promise<{ warning?: string }> {
   const prev = deps.readActive(deps.paths)
   const prevManaged = prev?.managedKeys ?? []
+  const warnings: string[] = []
 
   // Claude Code rotates the live OAuth credential as it runs, invalidating the
   // copy captured at `save` time. Before we switch away from a login profile,
@@ -40,7 +44,28 @@ export async function globalSwitch(profile: Profile, deps: SwitchDeps): Promise<
     if (prevProfile?.type === 'login') {
       const live = await deps.readLiveCredential(deps.plat, deps.paths)
       if (live !== null) await deps.setSecret(prev.name, live, deps.plat, deps.paths)
+      const liveAccount = deps.readOAuthAccount(deps.paths)
+      if (liveAccount != null) deps.saveProfile({ ...prevProfile, oauthAccount: liveAccount }, deps.paths)
     }
+
+    // Warn when switching from a Bedrock profile (bedrock or bedrock-key) that sets
+    // env vars to a non-Bedrock profile. The env vars in settings.json will be cleared,
+    // but any shell environment variables will persist and take precedence.
+    const prevWasBedrock = prevProfile && (prevProfile.type === 'bedrock' || prevProfile.type === 'bedrock-key')
+    const currentIsNotBedrock = profile.type !== 'bedrock' && profile.type !== 'bedrock-key'
+    if (prevWasBedrock && currentIsNotBedrock) {
+      warnings.push('Switched from a Bedrock profile. If this shell has CLAUDE_CODE_USE_BEDROCK or AWS_BEARER_TOKEN_BEDROCK ' +
+        'set in the environment, they will take precedence over the new profile. Open a new terminal to pick up the change.')
+    }
+  }
+
+  // Config isolation is expressed only via the CLAUDE_CONFIG_DIR environment
+  // variable, which a machine-wide switch cannot set for the desktop app or IDE.
+  // So a global switch does NOT redirect Claude at the isolated dir — isolation
+  // only takes effect per-shell (ccuse). Say so rather than silently ignoring it.
+  if (profile.configDir) {
+    warnings.push(`Profile '${profile.name}' has an isolated config dir, but isolation only applies per-shell. ` +
+      `This global switch uses the shared config. For the isolated config, use: ccuse ${profile.name}`)
   }
 
   let desired: DesiredSettings
@@ -51,7 +76,10 @@ export async function globalSwitch(profile: Profile, deps: SwitchDeps): Promise<
       const secret = await deps.getSecret(profile.name, deps.plat, deps.paths)
       if (secret === null) throw new Error(`No stored credential for profile '${profile.name}'. Run: ccswitch save ${profile.name}`)
       desired = { env: {}, apiKeyHelper: null }
-      applyCredential = () => deps.writeLiveCredential(secret, deps.plat, deps.paths)
+      applyCredential = async () => {
+        await deps.writeLiveCredential(secret, deps.plat, deps.paths)
+        if (profile.oauthAccount != null) deps.writeOAuthAccount(deps.paths, profile.oauthAccount)
+      }
       break
     }
     case 'api-key': {
@@ -92,4 +120,6 @@ export async function globalSwitch(profile: Profile, deps: SwitchDeps): Promise<
       `A timestamped backup of the previous settings.json (settings.json.bak.${deps.now}) may exist — inspect it and restore manually if needed.`,
     )
   }
+
+  return { warning: warnings.length > 0 ? warnings.join('\n\n') : undefined }
 }

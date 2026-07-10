@@ -187,6 +187,77 @@ d2('cli save/token', () => {
     e2(await getSec('work', 'linux', p, { slot: 'token' })).toBeNull()
   })
 
+  i2('rename moves the profile, re-keys both secret slots, and clears the old ones', async () => {
+    const p = paths(process.env, 'linux')
+    saveProfile({ name: 'old', type: 'login', env: {}, hasToken: true }, p)
+    await setSec('old', 'the-cred', 'linux', p)
+    await setSec('old', 'the-token', 'linux', p, { slot: 'token' })
+
+    const code = await runCli(['rename', 'old', 'new'], { platform: 'linux' })
+    e2(code).toBe(0)
+    e2(loadProf('new', p).type).toBe('login')
+    e2(await getSec('new', 'linux', p)).toBe('the-cred')
+    e2(await getSec('new', 'linux', p, { slot: 'token' })).toBe('the-token')
+    e2(await getSec('old', 'linux', p)).toBeNull()
+    e2(await getSec('old', 'linux', p, { slot: 'token' })).toBeNull()
+  })
+
+  i2('rename updates the active pointer when renaming the active profile', async () => {
+    const p = paths(process.env, 'linux')
+    saveProfile({ name: 'old', type: 'api-key', env: {} }, p)
+    await setSec('old', 'sk', 'linux', p)
+    mkdirSync(dirname(p.activeFile), { recursive: true })
+    writeFileSync(p.activeFile, JSON.stringify({ name: 'old', managedKeys: ['apiKeyHelper'] }))
+    const code = await runCli(['rename', 'old', 'new'], { platform: 'linux' })
+    e2(code).toBe(0)
+    const { readActive } = await import('../src/profiles.js')
+    e2(readActive(p)?.name).toBe('new')
+  })
+
+  i2('rename rejects an existing target name', async () => {
+    const p = paths(process.env, 'linux')
+    saveProfile({ name: 'old', type: 'api-key', env: {} }, p)
+    saveProfile({ name: 'taken', type: 'api-key', env: {} }, p)
+    const err: string[] = []
+    const origErrWrite = process.stderr.write
+    process.stderr.write = ((s: string) => { err.push(String(s)); return true }) as any
+    try {
+      const code = await runCli(['rename', 'old', 'taken'], { platform: 'linux' })
+      e2(code).toBe(1)
+      e2(err.join('')).toContain('already exists')
+    } finally {
+      process.stderr.write = origErrWrite
+    }
+  })
+
+  i2('doctor reports a clean bill for a healthy api-key profile', async () => {
+    const p = paths(process.env, 'linux')
+    saveProfile({ name: 'k', type: 'api-key', env: {} }, p)
+    await setSec('k', 'sk-secret', 'linux', p)
+    mkdirSync(dirname(p.settingsFile), { recursive: true })
+    writeFileSync(p.settingsFile, JSON.stringify({ apiKeyHelper: "cat '/x'" }))
+    writeFileSync(p.activeFile, JSON.stringify({ name: 'k', managedKeys: ['apiKeyHelper'] }))
+    const code = await runCli(['doctor'], { platform: 'linux' })
+    e2(code).toBe(0)
+    e2(out.join('')).toContain('0 error(s)')
+  })
+
+  i2('doctor exits non-zero when the active pointer is stale', async () => {
+    const p = paths(process.env, 'linux')
+    mkdirSync(dirname(p.activeFile), { recursive: true })
+    writeFileSync(p.activeFile, JSON.stringify({ name: 'ghost', managedKeys: [] }))
+    const err: string[] = []
+    const origErrWrite = process.stderr.write
+    process.stderr.write = ((s: string) => { err.push(String(s)); return true }) as any
+    try {
+      const code = await runCli(['doctor'], { platform: 'linux' })
+      e2(code).toBe(1)
+      e2(out.join('')).toContain('ghost')
+    } finally {
+      process.stderr.write = origErrWrite
+    }
+  })
+
   i2('env for a login profile reads the token slot, not the credential slot', async () => {
     const p = paths(process.env, 'linux')
     saveProfile({ name: 'work', type: 'login', env: {}, hasToken: true }, p)

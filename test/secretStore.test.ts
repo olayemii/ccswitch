@@ -12,6 +12,7 @@ function tmpPaths(): Paths {
     homesDir: join(dir, 'homes'), activeFile: join(dir, 'active.json'),
     claudeConfigDir: join(dir, '.claude'), settingsFile: join(dir, 's.json'),
     credentialsFile: join(dir, 'c.json'),
+    claudeJsonFile: join(dir, 'j.json'),
   }
 }
 

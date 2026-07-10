@@ -12,7 +12,7 @@ const { buildApiKeyHelperCommand, captureOAuthToken } = await import('../src/hel
 
 function tmpPaths(): Paths {
   const dir = mkdtempSync(join(tmpdir(), 'ccs-'))
-  return { ccswitchDir: dir, profilesDir: join(dir, 'profiles'), secretsDir: join(dir, 'secrets'), homesDir: join(dir, 'homes'), activeFile: join(dir, 'active.json'), claudeConfigDir: dir, settingsFile: join(dir, 's.json'), credentialsFile: join(dir, 'c.json') }
+  return { ccswitchDir: dir, profilesDir: join(dir, 'profiles'), secretsDir: join(dir, 'secrets'), homesDir: join(dir, 'homes'), activeFile: join(dir, 'active.json'), claudeConfigDir: dir, settingsFile: join(dir, 's.json'), credentialsFile: join(dir, 'c.json'), claudeJsonFile: join(dir, 'j.json') }
 }
 
 describe('buildApiKeyHelperCommand', () => {

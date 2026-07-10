@@ -55,8 +55,17 @@ bedrock), and writes the active-profile pointer. Affects the CLI, desktop
 app, and IDE extensions since they read the shared config and credential
 store.
 
-**Caveat:** the desktop app and IDE cache the token in memory — restart them
-after a global switch. A fresh terminal picks up the change immediately.
+**Caveats:**
+- The desktop app and IDE cache the token in memory — restart them after a
+  global switch.
+- When switching **from** a Bedrock profile **to** a non-Bedrock profile (login
+  or api-key), environment variables like `CLAUDE_CODE_USE_BEDROCK` and
+  `AWS_BEARER_TOKEN_BEDROCK` may persist in your current shell session and take
+  precedence over the new profile. Open a new terminal to ensure the switch
+  takes effect, or manually unset the environment variables:
+  ```bash
+  unset CLAUDE_CODE_USE_BEDROCK AWS_BEARER_TOKEN_BEDROCK AWS_REGION AWS_PROFILE
+  ```
 
 ## Per-shell switch
 
@@ -86,6 +95,16 @@ Then switch a shell with:
 ```bash
 ccuse <name>
 ```
+
+### Config isolation is per-shell only
+
+`ccswitch add` can give a profile an isolated config dir (its own
+`settings.json`, history, and MCP config). Isolation is carried by the
+`CLAUDE_CONFIG_DIR` environment variable, so it only takes effect in a shell
+that has that variable exported — i.e. via `ccuse <name>` / `ccswitch env
+<name>`. A **global** switch (`ccswitch <name>`) cannot set an environment
+variable for the desktop app or IDE, so it uses the shared config and prints a
+warning reminding you to use `ccuse <name>` if you want the isolated config.
 
 ## Bedrock API keys (`bedrock-key`)
 

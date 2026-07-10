@@ -21,6 +21,12 @@ describe('paths', () => {
     const p = paths({ HOME: '/home/u', CLAUDE_CONFIG_DIR: '/custom' }, 'linux')
     expect(p.settingsFile).toBe(path.join('/custom', 'settings.json'))
     expect(p.credentialsFile).toBe(path.join('/custom', '.credentials.json'))
+    expect(p.claudeJsonFile).toBe(path.join('/custom', '.claude.json'))
+  })
+
+  it('defaults claudeJsonFile to $HOME/.claude.json (sibling of ~/.claude, not inside it)', () => {
+    const p = paths(env, 'linux')
+    expect(p.claudeJsonFile).toBe(path.join('/home/u', '.claude.json'))
   })
 
   it('keychain only on darwin', () => {

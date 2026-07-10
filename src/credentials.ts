@@ -7,11 +7,28 @@ import { resolveLoginKeychain } from './secretStore.js'
 interface Deps { run?: typeof realRun }
 const LIVE_SERVICE = 'Claude Code-credentials'
 
+// Claude Code stores its OAuth credential in the login keychain under
+// account = the OS username (e.g. "olayemii"), NOT a fixed string. If we
+// read/write a different account (we used to hardcode "default"), we operate
+// on a separate keychain item that Claude Code never reads — so switches
+// silently have no effect. Resolve the account of the item Claude actually
+// uses by reading the existing item's `acct` attribute, falling back to
+// $USER for a fresh machine where no live item exists yet.
+async function resolveLiveAccount(run: typeof realRun, keychain: string): Promise<string> {
+  const r = await run('security', ['find-generic-password', '-s', LIVE_SERVICE, keychain])
+  if (r.code === 0) {
+    const m = `${r.stdout}\n${r.stderr}`.match(/"acct"<blob>="([^"]*)"/)
+    if (m) return m[1]
+  }
+  return process.env.USER || process.env.USERNAME || 'default'
+}
+
 export async function readLiveCredential(plat: Platform, paths: Paths, deps: Deps = {}): Promise<string | null> {
   const run = deps.run ?? realRun
   if (usesKeychain(plat)) {
     const keychain = await resolveLoginKeychain({ run })
-    const r = await run('security', ['find-generic-password', '-s', LIVE_SERVICE, '-w', keychain])
+    const acct = await resolveLiveAccount(run, keychain)
+    const r = await run('security', ['find-generic-password', '-s', LIVE_SERVICE, '-a', acct, '-w', keychain])
     if (r.code !== 0) return null
     return r.stdout.replace(/\n$/, '')
   }
@@ -23,7 +40,8 @@ export async function writeLiveCredential(value: string, plat: Platform, paths: 
   const run = deps.run ?? realRun
   if (usesKeychain(plat)) {
     const keychain = await resolveLoginKeychain({ run })
-    await run('security', ['add-generic-password', '-s', LIVE_SERVICE, '-a', 'default', '-w', value, '-U', keychain])
+    const acct = await resolveLiveAccount(run, keychain)
+    await run('security', ['add-generic-password', '-s', LIVE_SERVICE, '-a', acct, '-w', value, '-U', keychain])
     return
   }
   writeFileSync(paths.credentialsFile, value, { encoding: 'utf8', mode: 0o600 })
@@ -33,7 +51,8 @@ export async function neutralizeLiveCredential(plat: Platform, paths: Paths, dep
   const run = deps.run ?? realRun
   if (usesKeychain(plat)) {
     const keychain = await resolveLoginKeychain({ run })
-    await run('security', ['delete-generic-password', '-s', LIVE_SERVICE, '-a', 'default', keychain])
+    const acct = await resolveLiveAccount(run, keychain)
+    await run('security', ['delete-generic-password', '-s', LIVE_SERVICE, '-a', acct, keychain])
     return
   }
   if (existsSync(paths.credentialsFile)) rmSync(paths.credentialsFile)

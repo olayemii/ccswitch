@@ -11,6 +11,7 @@ export interface Paths {
   claudeConfigDir: string
   settingsFile: string
   credentialsFile: string
+  claudeJsonFile: string
 }
 
 export function getPlatform(): Platform {
@@ -32,6 +33,9 @@ export function paths(env: NodeJS.ProcessEnv = process.env, plat: Platform = get
   const home = homeDir(env, plat)
   const ccswitchDir = path.join(home, '.ccswitch')
   const claudeConfigDir = env.CLAUDE_CONFIG_DIR ?? path.join(home, '.claude')
+  // .claude.json is Claude Code's global state file — a sibling of ~/.claude,
+  // not inside it. It moves alongside CLAUDE_CONFIG_DIR when set.
+  const claudeJsonDir = env.CLAUDE_CONFIG_DIR ?? home
   return {
     ccswitchDir,
     profilesDir: path.join(ccswitchDir, 'profiles'),
@@ -41,5 +45,6 @@ export function paths(env: NodeJS.ProcessEnv = process.env, plat: Platform = get
     claudeConfigDir,
     settingsFile: path.join(claudeConfigDir, 'settings.json'),
     credentialsFile: path.join(claudeConfigDir, '.credentials.json'),
+    claudeJsonFile: path.join(claudeJsonDir, '.claude.json'),
   }
 }

@@ -8,7 +8,7 @@ import { loadSettings, saveSettings } from './settings.js'
 import { writeLiveCredential, neutralizeLiveCredential, readLiveCredential, readAuthStatus } from './credentials.js'
 import { buildApiKeyHelperCommand, captureOAuthToken } from './helpers.js'
 import { globalSwitch } from './switch.js'
-import { rmSync, existsSync, mkdirSync, cpSync } from 'node:fs'
+import { rmSync, existsSync, mkdirSync, cpSync, renameSync } from 'node:fs'
 import * as clack from '@clack/prompts'
 import { setSecret } from './secretStore.js'
 import { saveProfile } from './profiles.js'
@@ -16,6 +16,9 @@ import { isAuthType, type Profile, type Platform } from './types.js'
 import { hashCredential, findDuplicateLoginName } from './fingerprint.js'
 import { runInteractive } from './exec.js'
 import { captureLogin } from './loginCapture.js'
+import { readOAuthAccount, writeOAuthAccount } from './oauthAccount.js'
+import { tokenStaleWarning } from './tokenAge.js'
+import { diagnose, type DoctorSnapshot, type ProfileState } from './doctor.js'
 
 function nowIso(): string {
   // Injected-free deterministic-ish timestamp; Date is allowed at runtime (not in workflow scripts).
@@ -39,9 +42,15 @@ export async function runCli(
       const active = readActive(p)?.name
       const profiles = listProfiles(p)
       if (profiles.length === 0) { process.stdout.write('No profiles. Add one with: ccswitch add\n'); return }
+      const now = new Date()
       for (const prof of profiles) {
         const mark = prof.name === active ? '* ' : '  '
-        process.stdout.write(`${mark}${prof.name} (${prof.type})\n`)
+        const stale = tokenStaleWarning(prof, now) ? '  [stale token]' : ''
+        process.stdout.write(`${mark}${prof.name} (${prof.type})${stale}\n`)
+      }
+      for (const prof of profiles) {
+        const w = tokenStaleWarning(prof, now)
+        if (w) process.stderr.write(`Warning: ${w}\n`)
       }
     })
 
@@ -95,7 +104,44 @@ export async function runCli(
       if (!profileExists(name, p)) throw new Error(`Unknown profile: ${name}. See: ccswitch list`)
       const profile = loadProfile(name, p)
       const secret = await getSecret(name, plat, p, { slot: profile.type === 'login' ? 'token' : 'secret' })
+      const stale = tokenStaleWarning(profile, new Date())
+      if (stale) process.stderr.write(`Warning: ${stale}\n`)
       process.stdout.write(buildEnvExport(profile, secret) + '\n')
+    })
+
+  program
+    .command('rename <from> <to>')
+    .description('rename a profile, its secrets, isolated dir, and active pointer')
+    .action(async (from: string, to: string) => {
+      if (!profileExists(from, p)) throw new Error(`Unknown profile: ${from}. See: ccswitch list`)
+      assertValidProfileName(to)
+      if (profileExists(to, p)) throw new Error(`Profile '${to}' already exists.`)
+      const profile = loadProfile(from, p)
+
+      // Re-key secrets: copy each present slot to the new name, then delete the old.
+      for (const slot of ['secret', 'token'] as const) {
+        const value = await getSecret(from, plat, p, { slot })
+        if (value !== null) {
+          await setSecret(to, value, plat, p, { slot })
+          await deleteSecret(from, plat, p, { slot })
+        }
+      }
+
+      // Move the isolated config dir alongside the new name so it stays discoverable.
+      let configDir = profile.configDir
+      if (configDir && existsSync(configDir)) {
+        const dest = path.join(p.homesDir, to)
+        renameSync(configDir, dest)
+        configDir = dest
+      }
+
+      saveProfile({ ...profile, name: to, configDir }, p)
+      removeProfile(from, p)
+
+      const active = readActive(p)
+      if (active?.name === from) writeActive({ ...active, name: to }, p)
+
+      process.stdout.write(`Renamed profile '${from}' to '${to}'.\n`)
     })
 
   program
@@ -109,6 +155,37 @@ export async function runCli(
       if (profile.configDir && existsSync(profile.configDir)) rmSync(profile.configDir, { recursive: true, force: true })
       removeProfile(name, p)
       process.stdout.write(`Removed profile '${name}'.\n`)
+    })
+
+  program
+    .command('doctor')
+    .description('check that live state matches the active-profile pointer')
+    .action(async () => {
+      const profiles = listProfiles(p)
+      const profileStates: Record<string, ProfileState> = {}
+      for (const prof of profiles) {
+        const secretSlot = prof.type === 'bedrock' ? null : 'secret'
+        profileStates[prof.name] = {
+          hasSecret: secretSlot === null ? false : (await getSecret(prof.name, plat, p)) !== null,
+          hasToken: prof.type === 'login' ? (await getSecret(prof.name, plat, p, { slot: 'token' })) !== null : false,
+          configDirExists: prof.configDir ? existsSync(prof.configDir) : false,
+        }
+      }
+      const snap: DoctorSnapshot = {
+        profiles,
+        active: readActive(p),
+        settings: loadSettings(p.settingsFile),
+        liveCredentialPresent: (await readLiveCredential(plat, p)) !== null,
+        profileStates,
+        now: new Date(),
+      }
+      const findings = diagnose(snap)
+      const icon = { ok: '✓', warn: '!', error: '✗' } as const
+      for (const f of findings) process.stdout.write(`${icon[f.level]} ${f.message}\n`)
+      const errors = findings.filter((f) => f.level === 'error').length
+      const warnCount = findings.filter((f) => f.level === 'warn').length
+      process.stdout.write(`\n${errors} error(s), ${warnCount} warning(s).\n`)
+      if (errors > 0) throw new Error('doctor found problems')
     })
 
   program
@@ -148,6 +225,8 @@ export async function runCli(
         }
         await setSecret(name, cred, plat, p)
         profile.credHash = credHash
+        const account = readOAuthAccount(p)
+        if (account != null) profile.oauthAccount = account
       } else if (opts.type === 'api-key') {
         const settings = loadSettings(p.settingsFile)
         const key = settings?.env?.ANTHROPIC_API_KEY
@@ -179,7 +258,7 @@ export async function runCli(
       if (profile.type !== 'login') throw new Error(`Profile '${name}' is not a login profile.`)
       const token = await captureOAuthToken()
       await setSecret(name, token, plat, p, { slot: 'token' })
-      saveProfile({ ...profile, hasToken: true }, p)
+      saveProfile({ ...profile, hasToken: true, tokenCapturedAt: new Date().toISOString() }, p)
       process.stdout.write(`Captured OAuth token for '${name}'. Per-shell login now works.\n`)
     })
 
@@ -243,6 +322,7 @@ export async function runCli(
                 const token = await captureOAuthToken()
                 await setSecret(name, token, plat, p, { slot: 'token' })
                 profile.hasToken = true
+                profile.tokenCapturedAt = new Date().toISOString()
               } catch (err: any) {
                 process.stderr.write(`Warning: OAuth token capture skipped: ${err?.message ?? err}\n`)
               }
@@ -251,8 +331,10 @@ export async function runCli(
         })
         if (result == null) return
         profile.credHash = result.credHash
+        const account = readOAuthAccount(p)
+        if (account != null) profile.oauthAccount = account
       }
-      const isolate = await clack.confirm({ message: 'Isolate config (separate settings/history/MCP)?', initialValue: false })
+      const isolate = await clack.confirm({ message: 'Isolate config (separate settings/history/MCP)? Takes effect per-shell only (ccuse), not on global switch.', initialValue: false })
       if (isolate === true) {
         profile.configDir = path.join(p.homesDir, name)
         mkdirSync(profile.configDir, { recursive: true })
@@ -288,15 +370,19 @@ export async function runCli(
       }
       if (!profileExists(target, p)) throw new Error(`Unknown profile: ${target}. See: ccswitch list`)
       const profile = loadProfile(target, p)
-      await globalSwitch(profile, {
+      const result = await globalSwitch(profile, {
         plat, paths: p, now: nowIso(),
         loadSettings, saveSettings, getSecret,
         writeLiveCredential, neutralizeLiveCredential,
         readActive, writeActive,
         writeApiKeyHelper: (prof) => buildApiKeyHelperCommand(prof, plat, p),
         loadProfile, readLiveCredential, setSecret,
+        readOAuthAccount, writeOAuthAccount, saveProfile,
       })
       process.stdout.write(`Switched to '${target}'. Restart desktop app / IDE to pick up the change.\n`)
+      if (result.warning) {
+        process.stderr.write(`\nWarning: ${result.warning}\n`)
+      }
     })
 
   try {

@@ -7,7 +7,9 @@ export interface Profile {
   env: Record<string, string>
   configDir?: string
   hasToken?: boolean
+  tokenCapturedAt?: string
   credHash?: string
+  oauthAccount?: unknown
 }
 
 export interface ActiveState {
