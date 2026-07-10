@@ -18,7 +18,7 @@ import { runInteractive } from './exec.js'
 import { captureLogin } from './loginCapture.js'
 import { readOAuthAccount, writeOAuthAccount } from './oauthAccount.js'
 import { tokenStaleWarning } from './tokenAge.js'
-import { diagnose, type DoctorSnapshot, type ProfileState } from './doctor.js'
+import { diagnose, describeActive, type DoctorSnapshot, type ProfileState } from './doctor.js'
 
 function nowIso(): string {
   // Injected-free deterministic-ish timestamp; Date is allowed at runtime (not in workflow scripts).
@@ -161,19 +161,24 @@ export async function runCli(
     .command('doctor')
     .description('check that live state matches the active-profile pointer')
     .action(async () => {
+      const active = readActive(p)
+      const activeName = active?.name
       const profiles = listProfiles(p)
       const profileStates: Record<string, ProfileState> = {}
       for (const prof of profiles) {
         const secretSlot = prof.type === 'bedrock' ? null : 'secret'
+        const secret = secretSlot === null ? null : await getSecret(prof.name, plat, p)
+        const isActiveKey = prof.name === activeName && (prof.type === 'api-key' || prof.type === 'bedrock-key')
         profileStates[prof.name] = {
-          hasSecret: secretSlot === null ? false : (await getSecret(prof.name, plat, p)) !== null,
+          hasSecret: secret !== null,
           hasToken: prof.type === 'login' ? (await getSecret(prof.name, plat, p, { slot: 'token' })) !== null : false,
           configDirExists: prof.configDir ? existsSync(prof.configDir) : false,
+          ...(isActiveKey && secret !== null ? { secretPreview: secret } : {}),
         }
       }
       const snap: DoctorSnapshot = {
         profiles,
-        active: readActive(p),
+        active,
         settings: loadSettings(p.settingsFile),
         liveCredentialPresent: (await readLiveCredential(plat, p)) !== null,
         profileStates,
@@ -182,6 +187,10 @@ export async function runCli(
       const findings = diagnose(snap)
       const icon = { ok: '✓', warn: '!', error: '✗' } as const
       for (const f of findings) process.stdout.write(`${icon[f.level]} ${f.message}\n`)
+
+      process.stdout.write('\n')
+      for (const line of describeActive(snap)) process.stdout.write(`${line}\n`)
+
       const errors = findings.filter((f) => f.level === 'error').length
       const warnCount = findings.filter((f) => f.level === 'warn').length
       process.stdout.write(`\n${errors} error(s), ${warnCount} warning(s).\n`)

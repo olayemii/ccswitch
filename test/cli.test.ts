@@ -240,6 +240,8 @@ d2('cli save/token', () => {
     const code = await runCli(['doctor'], { platform: 'linux' })
     e2(code).toBe(0)
     e2(out.join('')).toContain('0 error(s)')
+    e2(out.join('')).toContain('Active profile details:')
+    e2(out.join('')).toContain('name:        k')
   })
 
   i2('doctor exits non-zero when the active pointer is stale', async () => {
@@ -253,6 +255,7 @@ d2('cli save/token', () => {
       const code = await runCli(['doctor'], { platform: 'linux' })
       e2(code).toBe(1)
       e2(out.join('')).toContain('ghost')
+      e2(out.join('')).toContain('No active profile.')
     } finally {
       process.stderr.write = origErrWrite
     }
