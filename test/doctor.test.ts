@@ -146,6 +146,21 @@ describe('describeActive', () => {
     expect(describeActive(snap())).toEqual(['No active profile.'])
   })
 
+  it('returns the no-active line when the active pointer references a missing profile', () => {
+    expect(describeActive(snap({ active: { name: 'ghost', managedKeys: [] } }))).toEqual(['No active profile.'])
+  })
+
+  it('shows a masked credential for an active api-key profile', () => {
+    const profile: Profile = { name: 'k', type: 'api-key', env: {} }
+    const lines = describeActive(snap({
+      profiles: [profile],
+      active: { name: 'k', managedKeys: ['apiKeyHelper'] },
+      profileStates: { k: { hasSecret: true, hasToken: false, configDirExists: false, secretPreview: 'sk-ant-api03-xyz-a3f9' } },
+    }))
+    expect(lines.join('\n')).toContain('credential:  sk-ant…a3f9 (len 21)')
+    expect(lines.join('\n')).not.toContain('account:')
+  })
+
   it('describes a bedrock profile with name, type and default config dir', () => {
     const profile: Profile = { name: 'br', type: 'bedrock', env: { CLAUDE_CODE_USE_BEDROCK: '1' } }
     const lines = describeActive(snap({

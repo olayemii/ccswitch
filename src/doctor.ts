@@ -103,8 +103,9 @@ export function diagnose(snap: DoctorSnapshot): Finding[] {
 // from the snapshot. Returns display lines (no icons). diagnose() reports drift;
 // this shows identity — who/what you are actually running as.
 export function describeActive(snap: DoctorSnapshot): string[] {
-  if (snap.active === null) return ['No active profile.']
-  const profile = snap.profiles.find((p) => p.name === snap.active!.name)
+  const active = snap.active
+  if (active === null) return ['No active profile.']
+  const profile = snap.profiles.find((p) => p.name === active.name)
   if (!profile) return ['No active profile.']
 
   const st = snap.profileStates[profile.name]
