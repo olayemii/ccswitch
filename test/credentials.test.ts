@@ -39,11 +39,11 @@ describe('credentials keychain backend', () => {
     expect(run).toHaveBeenCalledWith('security', expect.arrayContaining(['find-generic-password', '-s', 'Claude Code-credentials', '-w']))
   })
 
-  it('neutralize calls delete-generic-password', async () => {
+  it('neutralize calls delete-generic-password with -a default', async () => {
     const p = tmpPaths()
     const run = vi.fn().mockResolvedValue({ stdout: '', stderr: '', code: 0 })
     await neutralizeLiveCredential('darwin', p, { run })
-    expect(run).toHaveBeenCalledWith('security', expect.arrayContaining(['delete-generic-password', '-s', 'Claude Code-credentials']))
+    expect(run).toHaveBeenCalledWith('security', expect.arrayContaining(['delete-generic-password', '-s', 'Claude Code-credentials', '-a', 'default']))
   })
 
   it('appends the resolved login keychain as the trailing arg on read/write/neutralize', async () => {

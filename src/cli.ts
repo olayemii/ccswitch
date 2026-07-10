@@ -211,14 +211,14 @@ export async function runCli(
         const cred = await readLiveCredential(plat, p)
         if (!cred) throw new Error('No live login found. Run /login first, then re-run add.')
         await setSecret(name, cred, plat, p)
-        const wantToken = await clack.confirm({ message: 'Capture OAuth token for per-shell use?' })
+        const wantToken = await clack.confirm({ message: 'Capture OAuth token for per-shell use?', initialValue: false })
         if (wantToken === true) {
           const token = await captureOAuthToken()
           await setSecret(name, token, plat, p, { slot: 'token' })
           profile.hasToken = true
         }
       }
-      const isolate = await clack.confirm({ message: 'Isolate config (separate settings/history/MCP)?' })
+      const isolate = await clack.confirm({ message: 'Isolate config (separate settings/history/MCP)?', initialValue: false })
       if (isolate === true) {
         profile.configDir = path.join(p.homesDir, name)
         mkdirSync(profile.configDir, { recursive: true })

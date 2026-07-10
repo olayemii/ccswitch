@@ -33,7 +33,7 @@ export async function neutralizeLiveCredential(plat: Platform, paths: Paths, dep
   const run = deps.run ?? realRun
   if (usesKeychain(plat)) {
     const keychain = await resolveLoginKeychain({ run })
-    await run('security', ['delete-generic-password', '-s', LIVE_SERVICE, keychain])
+    await run('security', ['delete-generic-password', '-s', LIVE_SERVICE, '-a', 'default', keychain])
     return
   }
   if (existsSync(paths.credentialsFile)) rmSync(paths.credentialsFile)

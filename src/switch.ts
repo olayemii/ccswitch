@@ -28,7 +28,15 @@ export async function globalSwitch(profile: Profile, deps: SwitchDeps): Promise<
   // re-snapshot the current live credential into its store so switching back
   // restores a valid credential instead of a stale one (which forces relogin).
   if (prev && prev.name !== profile.name) {
-    const prevProfile = deps.loadProfile(prev.name, deps.paths)
+    // The outgoing profile may have been renamed or removed since it was made
+    // active, leaving active.json pointing at a profile that no longer exists.
+    // The re-snapshot is best-effort, so a missing profile is not fatal — skip it.
+    let prevProfile: Profile | null = null
+    try {
+      prevProfile = deps.loadProfile(prev.name, deps.paths)
+    } catch {
+      prevProfile = null
+    }
     if (prevProfile?.type === 'login') {
       const live = await deps.readLiveCredential(deps.plat, deps.paths)
       if (live !== null) await deps.setSecret(prev.name, live, deps.plat, deps.paths)

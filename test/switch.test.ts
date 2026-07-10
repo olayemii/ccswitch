@@ -108,6 +108,21 @@ describe('globalSwitch', () => {
     expect(t.deps.setSecret).not.toHaveBeenCalled()
   })
 
+  it('does not throw when the outgoing profile no longer exists (stale active.json)', async () => {
+    const t = baseDeps({
+      readActive: vi.fn().mockReturnValue({ name: 'scholastic-main-api', managedKeys: [] }),
+      loadProfile: vi.fn().mockImplementation(() => { throw new Error('Unknown profile: scholastic-main-api') }),
+    })
+    await expect(
+      globalSwitch({ name: 'scholastic-bedrock', type: 'bedrock', env: {} }, t.deps as any),
+    ).resolves.toBeUndefined()
+    expect(t.deps.setSecret).not.toHaveBeenCalled()
+    expect(t.deps.writeActive).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'scholastic-bedrock' }),
+      t.paths,
+    )
+  })
+
   it('clears keys managed by the previous profile', async () => {
     const t = baseDeps({ readActive: vi.fn().mockReturnValue({ name: 'old', managedKeys: ['env.CLAUDE_CODE_USE_BEDROCK'] }), loadSettings: vi.fn().mockReturnValue({ env: { CLAUDE_CODE_USE_BEDROCK: '1' } }) })
     await globalSwitch({ name: 'work', type: 'login', env: {} }, t.deps as any)
