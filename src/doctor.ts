@@ -1,5 +1,5 @@
 import type { Profile, ActiveState } from './types.js'
-import { tokenStaleWarning } from './tokenAge.js'
+import { tokenStaleWarning, tokenAgeDays } from './tokenAge.js'
 
 export type FindingLevel = 'ok' | 'warn' | 'error'
 
@@ -99,6 +99,16 @@ export function diagnose(snap: DoctorSnapshot): Finding[] {
   return findings
 }
 
+// Read email/org defensively from the cached oauthAccount (typed unknown).
+// Returns a display string like "email — org", "email", or null when absent.
+function formatAccount(account: unknown): string | null {
+  if (account == null || typeof account !== 'object') return null
+  const email = (account as Record<string, unknown>).emailAddress
+  if (typeof email !== 'string' || email === '') return null
+  const org = (account as Record<string, unknown>).organizationName
+  return typeof org === 'string' && org !== '' ? `${email} — ${org}` : email
+}
+
 // Human-readable details for the active profile only. Pure: reads everything
 // from the snapshot. Returns display lines (no icons). diagnose() reports drift;
 // this shows identity — who/what you are actually running as.
@@ -116,6 +126,21 @@ export function describeActive(snap: DoctorSnapshot): string[] {
 
   if (profile.type === 'api-key' || profile.type === 'bedrock-key') {
     lines.push(`  credential:  ${st?.secretPreview ? maskSecret(st.secretPreview) : '(missing)'}`)
+  }
+
+  if (profile.type === 'login') {
+    const account = formatAccount(profile.oauthAccount)
+    if (account) lines.push(`  account:     ${account}`)
+
+    if (!profile.hasToken) {
+      lines.push('  token:       none captured')
+    } else if (!profile.tokenCapturedAt) {
+      lines.push('  token:       present, capture date unknown')
+    } else {
+      const age = tokenAgeDays(profile, snap.now)
+      const date = profile.tokenCapturedAt.slice(0, 10)
+      lines.push(`  token:       captured ${age} days ago (${date})`)
+    }
   }
 
   return lines

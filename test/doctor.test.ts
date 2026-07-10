@@ -161,6 +161,68 @@ describe('describeActive', () => {
     expect(lines.join('\n')).not.toContain('account:')
   })
 
+  it('shows (missing) credential when the active key profile has no secretPreview', () => {
+    const profile: Profile = { name: 'bk', type: 'bedrock-key', env: {} }
+    const lines = describeActive(snap({
+      profiles: [profile],
+      active: { name: 'bk', managedKeys: [] },
+      profileStates: { bk: { hasSecret: false, hasToken: false, configDirExists: false } },
+    }))
+    expect(lines.join('\n')).toContain('credential:  (missing)')
+  })
+
+  it('shows account (email and org) and token age for a login profile', () => {
+    const captured = new Date(now.getTime() - 12 * 24 * 60 * 60 * 1000).toISOString()
+    const profile: Profile = {
+      name: 'work', type: 'login', env: {}, hasToken: true, tokenCapturedAt: captured,
+      oauthAccount: { emailAddress: 'olayemii@example.com', organizationName: 'Acme Inc' },
+    }
+    const lines = describeActive(snap({
+      profiles: [profile],
+      active: { name: 'work', managedKeys: [] },
+      profileStates: { work: { hasSecret: true, hasToken: true, configDirExists: false } },
+    }))
+    expect(lines.join('\n')).toContain('account:     olayemii@example.com — Acme Inc')
+    expect(lines.join('\n')).toContain('token:       captured 12 days ago')
+    expect(lines.join('\n')).toContain('(' + captured.slice(0, 10) + ')')
+    expect(lines.join('\n')).not.toContain('credential:')
+  })
+
+  it('shows email alone when the login profile oauthAccount has no org', () => {
+    const profile: Profile = {
+      name: 'work', type: 'login', env: {},
+      oauthAccount: { emailAddress: 'solo@example.com' },
+    }
+    const lines = describeActive(snap({
+      profiles: [profile],
+      active: { name: 'work', managedKeys: [] },
+      profileStates: { work: { hasSecret: true, hasToken: false, configDirExists: false } },
+    }))
+    expect(lines.join('\n')).toContain('account:     solo@example.com')
+    expect(lines.join('\n')).not.toContain('—')
+  })
+
+  it('omits the account line when a login profile has no oauthAccount', () => {
+    const profile: Profile = { name: 'work', type: 'login', env: {} }
+    const lines = describeActive(snap({
+      profiles: [profile],
+      active: { name: 'work', managedKeys: [] },
+      profileStates: { work: { hasSecret: true, hasToken: false, configDirExists: false } },
+    }))
+    expect(lines.join('\n')).not.toContain('account:')
+    expect(lines.join('\n')).toContain('token:       none captured')
+  })
+
+  it('shows unknown capture date when a login token has no tokenCapturedAt', () => {
+    const profile: Profile = { name: 'work', type: 'login', env: {}, hasToken: true }
+    const lines = describeActive(snap({
+      profiles: [profile],
+      active: { name: 'work', managedKeys: [] },
+      profileStates: { work: { hasSecret: true, hasToken: true, configDirExists: false } },
+    }))
+    expect(lines.join('\n')).toContain('token:       present, capture date unknown')
+  })
+
   it('describes a bedrock profile with name, type and default config dir', () => {
     const profile: Profile = { name: 'br', type: 'bedrock', env: { CLAUDE_CODE_USE_BEDROCK: '1' } }
     const lines = describeActive(snap({
