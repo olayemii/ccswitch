@@ -22,6 +22,10 @@ export interface ProfileState {
   hasSecret: boolean
   hasToken: boolean
   configDirExists: boolean
+  // Raw stored secret value for the active api-key/bedrock-key profile only,
+  // captured by the CLI so describeActive() can render a masked preview.
+  // Unset for all other profiles.
+  secretPreview?: string
 }
 
 export interface DoctorSnapshot {
