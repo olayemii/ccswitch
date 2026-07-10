@@ -104,4 +104,21 @@ describeIO('settings file IO', () => {
     expectIO(existsSync(join(dir, 'settings.json.bak.2026-07-09T00:00:00Z'))).toBe(false)
     expectIO(existsSync(file)).toBe(true)
   })
+
+  itIO('prunes old backups, keeping only the newest KEEP_BACKUPS', async () => {
+    const { readdirSync } = await import('node:fs')
+    const { KEEP_BACKUPS } = await import('../src/settings.js')
+    const dir = mkdtempSync(join(tmpdir(), 'ccs-'))
+    const file = join(dir, 'settings.json')
+    writeFileSync(file, JSON.stringify({ n: 0 }))
+    // Zero-padded counter keeps timestamps lexicographically ordered.
+    for (let i = 1; i <= KEEP_BACKUPS + 5; i++) {
+      saveSettings(file, { n: i }, `2026-07-09T00:00:${String(i).padStart(2, '0')}Z`)
+    }
+    const backups = readdirSync(dir).filter((e) => e.startsWith('settings.json.bak.'))
+    expectIO(backups.length).toBe(KEEP_BACKUPS)
+    // The oldest should have been removed; the newest retained.
+    expectIO(backups.some((b) => b.endsWith('00:01Z'))).toBe(false)
+    expectIO(backups.some((b) => b.endsWith(`00:${String(KEEP_BACKUPS + 5).padStart(2, '0')}Z`))).toBe(true)
+  })
 })

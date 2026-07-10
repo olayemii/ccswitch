@@ -3,7 +3,7 @@ import { globalSwitch } from '../src/switch.js'
 import type { Paths } from '../src/platform.js'
 
 function baseDeps(overrides = {}) {
-  const paths = { ccswitchDir: '/cc', profilesDir: '/cc/profiles', secretsDir: '/cc/secrets', homesDir: '/cc/homes', activeFile: '/cc/active.json', claudeConfigDir: '/cl', settingsFile: '/cl/settings.json', credentialsFile: '/cl/.credentials.json' } as Paths
+  const paths = { ccswitchDir: '/cc', profilesDir: '/cc/profiles', secretsDir: '/cc/secrets', homesDir: '/cc/homes', activeFile: '/cc/active.json', claudeConfigDir: '/cl', settingsFile: '/cl/settings.json', credentialsFile: '/cl/.credentials.json', claudeJsonFile: '/cl/.claude.json' } as Paths
   let savedSettings: any = null
   return {
     paths,
@@ -23,6 +23,9 @@ function baseDeps(overrides = {}) {
       loadProfile: vi.fn(),
       readLiveCredential: vi.fn().mockResolvedValue(null),
       setSecret: vi.fn().mockResolvedValue(undefined),
+      readOAuthAccount: vi.fn().mockReturnValue(null),
+      writeOAuthAccount: vi.fn(),
+      saveProfile: vi.fn(),
       ...overrides,
     },
   }
@@ -113,9 +116,8 @@ describe('globalSwitch', () => {
       readActive: vi.fn().mockReturnValue({ name: 'scholastic-main-api', managedKeys: [] }),
       loadProfile: vi.fn().mockImplementation(() => { throw new Error('Unknown profile: scholastic-main-api') }),
     })
-    await expect(
-      globalSwitch({ name: 'scholastic-bedrock', type: 'bedrock', env: {} }, t.deps as any),
-    ).resolves.toBeUndefined()
+    const result = await globalSwitch({ name: 'scholastic-bedrock', type: 'bedrock', env: {} }, t.deps as any)
+    expect(result).toEqual({ warning: undefined })
     expect(t.deps.setSecret).not.toHaveBeenCalled()
     expect(t.deps.writeActive).toHaveBeenCalledWith(
       expect.objectContaining({ name: 'scholastic-bedrock' }),
@@ -160,5 +162,109 @@ describe('globalSwitch', () => {
     const t = baseDeps({ writeActive: vi.fn().mockImplementation(() => { throw new Error('disk full') }) })
     await expect(globalSwitch({ name: 'work', type: 'login', env: {} }, t.deps as any)).rejects.toThrow(/backup|inconsistent|manual/i)
     expect(t.deps.writeLiveCredential).toHaveBeenCalled()
+  })
+
+  it('warns when switching from bedrock to non-bedrock profile', async () => {
+    const t = baseDeps({
+      readActive: vi.fn().mockReturnValue({ name: 'bedrock-prof', managedKeys: ['env.CLAUDE_CODE_USE_BEDROCK'] }),
+      loadProfile: vi.fn().mockReturnValue({ name: 'bedrock-prof', type: 'bedrock', env: { CLAUDE_CODE_USE_BEDROCK: '1' } }),
+    })
+    const result = await globalSwitch({ name: 'work', type: 'login', env: {} }, t.deps as any)
+    expect(result.warning).toContain('CLAUDE_CODE_USE_BEDROCK')
+    expect(result.warning).toContain('Open a new terminal')
+  })
+
+  it('warns when switching from bedrock-key to non-bedrock profile', async () => {
+    const t = baseDeps({
+      readActive: vi.fn().mockReturnValue({ name: 'bedrock-key-prof', managedKeys: ['env.AWS_BEARER_TOKEN_BEDROCK'] }),
+      loadProfile: vi.fn().mockReturnValue({ name: 'bedrock-key-prof', type: 'bedrock-key', env: { CLAUDE_CODE_USE_BEDROCK: '1' } }),
+    })
+    const result = await globalSwitch({ name: 'api-prof', type: 'api-key', env: {} }, t.deps as any)
+    expect(result.warning).toContain('Bedrock profile')
+  })
+
+  it('does not warn when switching from bedrock to bedrock', async () => {
+    const t = baseDeps({
+      readActive: vi.fn().mockReturnValue({ name: 'bedrock-prof', managedKeys: ['env.CLAUDE_CODE_USE_BEDROCK'] }),
+      loadProfile: vi.fn().mockReturnValue({ name: 'bedrock-prof', type: 'bedrock', env: { CLAUDE_CODE_USE_BEDROCK: '1' } }),
+    })
+    const result = await globalSwitch({ name: 'other-bedrock', type: 'bedrock', env: { CLAUDE_CODE_USE_BEDROCK: '1' } }, t.deps as any)
+    expect(result.warning).toBeUndefined()
+  })
+
+  it('applies the stored oauthAccount when switching to a login profile', async () => {
+    const t = baseDeps()
+    const account = { emailAddress: 'olayemii@example.com' }
+    await globalSwitch({ name: 'work', type: 'login', env: {}, oauthAccount: account }, t.deps as any)
+    expect(t.deps.writeOAuthAccount).toHaveBeenCalledWith(t.paths, account)
+  })
+
+  it('does not touch oauthAccount when the login profile has none stored', async () => {
+    const t = baseDeps()
+    await globalSwitch({ name: 'work', type: 'login', env: {} }, t.deps as any)
+    expect(t.deps.writeOAuthAccount).not.toHaveBeenCalled()
+  })
+
+  it('does not apply oauthAccount for non-login profile switches', async () => {
+    const t = baseDeps()
+    await globalSwitch({ name: 'k', type: 'api-key', env: {} }, t.deps as any)
+    expect(t.deps.writeOAuthAccount).not.toHaveBeenCalled()
+  })
+
+  it('re-snapshots the outgoing login profile oauthAccount before switching away', async () => {
+    const outgoing = { name: 'work', type: 'login' as const, env: {} }
+    const liveAccount = { emailAddress: 'fresh@example.com' }
+    const t = baseDeps({
+      readActive: vi.fn().mockReturnValue({ name: 'work', managedKeys: [] }),
+      loadProfile: vi.fn().mockReturnValue(outgoing),
+      readLiveCredential: vi.fn().mockResolvedValue('fresh-rotated-cred'),
+      readOAuthAccount: vi.fn().mockReturnValue(liveAccount),
+    })
+    await globalSwitch({ name: 'k', type: 'api-key', env: {} }, t.deps as any)
+    expect(t.deps.saveProfile).toHaveBeenCalledWith({ ...outgoing, oauthAccount: liveAccount }, t.paths)
+  })
+
+  it('does not re-snapshot oauthAccount when no live oauthAccount is present', async () => {
+    const t = baseDeps({
+      readActive: vi.fn().mockReturnValue({ name: 'work', managedKeys: [] }),
+      loadProfile: vi.fn().mockReturnValue({ name: 'work', type: 'login', env: {} }),
+      readLiveCredential: vi.fn().mockResolvedValue('fresh-rotated-cred'),
+      readOAuthAccount: vi.fn().mockReturnValue(null),
+    })
+    await globalSwitch({ name: 'k', type: 'api-key', env: {} }, t.deps as any)
+    expect(t.deps.saveProfile).not.toHaveBeenCalled()
+  })
+
+  it('warns that isolation is per-shell-only when switching to an isolated profile', async () => {
+    const t = baseDeps()
+    const result = await globalSwitch({ name: 'work', type: 'login', env: {}, configDir: '/cc/homes/work' }, t.deps as any)
+    expect(result.warning).toMatch(/isolat/i)
+    expect(result.warning).toContain('ccuse')
+  })
+
+  it('does not warn about isolation for a non-isolated profile', async () => {
+    const t = baseDeps()
+    const result = await globalSwitch({ name: 'work', type: 'login', env: {} }, t.deps as any)
+    expect(result.warning).toBeUndefined()
+  })
+
+  it('combines the bedrock and isolation warnings when both apply', async () => {
+    const t = baseDeps({
+      readActive: vi.fn().mockReturnValue({ name: 'bd', managedKeys: ['env.CLAUDE_CODE_USE_BEDROCK'] }),
+      loadProfile: vi.fn().mockReturnValue({ name: 'bd', type: 'bedrock', env: { CLAUDE_CODE_USE_BEDROCK: '1' } }),
+    })
+    const result = await globalSwitch({ name: 'work', type: 'login', env: {}, configDir: '/cc/homes/work' }, t.deps as any)
+    expect(result.warning).toContain('CLAUDE_CODE_USE_BEDROCK')
+    expect(result.warning).toMatch(/isolat/i)
+  })
+
+  it('does not warn when switching from login to bedrock', async () => {
+    const t = baseDeps({
+      readActive: vi.fn().mockReturnValue({ name: 'login-prof', managedKeys: [] }),
+      loadProfile: vi.fn().mockReturnValue({ name: 'login-prof', type: 'login', env: {} }),
+      readLiveCredential: vi.fn().mockResolvedValue('cred'),
+    })
+    const result = await globalSwitch({ name: 'bedrock-prof', type: 'bedrock', env: { CLAUDE_CODE_USE_BEDROCK: '1' } }, t.deps as any)
+    expect(result.warning).toBeUndefined()
   })
 })

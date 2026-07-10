@@ -12,6 +12,7 @@ function tmpPaths(): Paths {
     homesDir: join(dir, 'homes'), activeFile: join(dir, 'active.json'),
     claudeConfigDir: dir, settingsFile: join(dir, 's.json'),
     credentialsFile: join(dir, '.credentials.json'),
+    claudeJsonFile: join(dir, '.claude.json'),
   }
 }
 
@@ -39,11 +40,45 @@ describe('credentials keychain backend', () => {
     expect(run).toHaveBeenCalledWith('security', expect.arrayContaining(['find-generic-password', '-s', 'Claude Code-credentials', '-w']))
   })
 
-  it('neutralize calls delete-generic-password with -a default', async () => {
+  it('read/write/neutralize target the account of the existing live item', async () => {
     const p = tmpPaths()
-    const run = vi.fn().mockResolvedValue({ stdout: '', stderr: '', code: 0 })
+    // resolution: find without -w returns the existing item's attributes
+    const run = vi.fn().mockImplementation(async (_cmd: string, args: string[]) => {
+      if (args[0] === 'find-generic-password' && !args.includes('-w')) {
+        return { stdout: '    "acct"<blob>="olayemii"\n    "svce"<blob>="Claude Code-credentials"\n', stderr: '', code: 0 }
+      }
+      return { stdout: '{"t":1}\n', stderr: '', code: 0 }
+    })
+
+    await readLiveCredential('darwin', p, { run })
+    expect(run).toHaveBeenCalledWith('security', expect.arrayContaining(['find-generic-password', '-s', 'Claude Code-credentials', '-a', 'olayemii', '-w']))
+
+    run.mockClear()
+    run.mockImplementation(async (_cmd: string, args: string[]) => {
+      if (args[0] === 'find-generic-password' && !args.includes('-w')) {
+        return { stdout: '    "acct"<blob>="olayemii"\n', stderr: '', code: 0 }
+      }
+      return { stdout: '', stderr: '', code: 0 }
+    })
+    await writeLiveCredential('{"t":1}', 'darwin', p, { run })
+    expect(run).toHaveBeenCalledWith('security', expect.arrayContaining(['add-generic-password', '-s', 'Claude Code-credentials', '-a', 'olayemii', '-U']))
+
     await neutralizeLiveCredential('darwin', p, { run })
-    expect(run).toHaveBeenCalledWith('security', expect.arrayContaining(['delete-generic-password', '-s', 'Claude Code-credentials', '-a', 'default']))
+    expect(run).toHaveBeenCalledWith('security', expect.arrayContaining(['delete-generic-password', '-s', 'Claude Code-credentials', '-a', 'olayemii']))
+  })
+
+  it('falls back to $USER when no live item exists yet', async () => {
+    const p = tmpPaths()
+    vi.stubEnv('USER', 'bob')
+    const run = vi.fn().mockImplementation(async (_cmd: string, args: string[]) => {
+      if (args[0] === 'find-generic-password' && !args.includes('-w')) {
+        return { stdout: '', stderr: 'not found', code: 44 }
+      }
+      return { stdout: '', stderr: '', code: 0 }
+    })
+    await writeLiveCredential('{"t":1}', 'darwin', p, { run })
+    expect(run).toHaveBeenCalledWith('security', expect.arrayContaining(['add-generic-password', '-s', 'Claude Code-credentials', '-a', 'bob', '-U']))
+    vi.unstubAllEnvs()
   })
 
   it('appends the resolved login keychain as the trailing arg on read/write/neutralize', async () => {
