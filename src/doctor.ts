@@ -9,7 +9,8 @@ export function maskSecret(value: string | null | undefined): string {
   if (!value) return '(none)'
   const len = value.length
   if (len >= 12) return `${value.slice(0, 6)}…${value.slice(-4)} (len ${len})`
-  return `…${value.slice(-4)} (len ${len})`
+  const revealed = Math.min(4, len - 1)
+  return `…${revealed > 0 ? value.slice(-revealed) : ''} (len ${len})`
 }
 export interface Finding {
   level: FindingLevel
@@ -138,8 +139,12 @@ export function describeActive(snap: DoctorSnapshot): string[] {
       lines.push('  token:       present, capture date unknown')
     } else {
       const age = tokenAgeDays(profile, snap.now)
-      const date = profile.tokenCapturedAt.slice(0, 10)
-      lines.push(`  token:       captured ${age} days ago (${date})`)
+      if (age === null) {
+        lines.push('  token:       present, capture date unknown')
+      } else {
+        const date = profile.tokenCapturedAt.slice(0, 10)
+        lines.push(`  token:       captured ${age} days ago (${date})`)
+      }
     }
   }
 

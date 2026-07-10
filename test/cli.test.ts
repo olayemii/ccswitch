@@ -244,6 +244,20 @@ d2('cli save/token', () => {
     e2(out.join('')).toContain('name:        k')
   })
 
+  i2('doctor masks the secret in output and does not reveal the raw value', async () => {
+    const p = paths(process.env, 'linux')
+    saveProfile({ name: 'k', type: 'api-key', env: {} }, p)
+    await setSec('k', 'sk-ant-SUPERSECRETVALUE-9999', 'linux', p)
+    mkdirSync(dirname(p.settingsFile), { recursive: true })
+    writeFileSync(p.settingsFile, JSON.stringify({ apiKeyHelper: "cat '/x'" }))
+    writeFileSync(p.activeFile, JSON.stringify({ name: 'k', managedKeys: ['apiKeyHelper'] }))
+    const code = await runCli(['doctor'], { platform: 'linux' })
+    e2(code).toBe(0)
+    const printed = out.join('')
+    e2(printed).not.toContain('SUPERSECRETVALUE')
+    e2(printed).toContain('credential:')
+  })
+
   i2('doctor exits non-zero when the active pointer is stale', async () => {
     const p = paths(process.env, 'linux')
     mkdirSync(dirname(p.activeFile), { recursive: true })

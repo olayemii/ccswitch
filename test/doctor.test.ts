@@ -132,6 +132,12 @@ describe('maskSecret', () => {
   it('shows only last 4 with length for short secrets', () => {
     expect(maskSecret('abcdef')).toBe('…cdef (len 6)')
   })
+  it('does not reveal the whole value for a 2-char secret', () => {
+    expect(maskSecret('ab')).toBe('…b (len 2)')
+  })
+  it('reveals nothing for a 1-char secret', () => {
+    expect(maskSecret('a')).toBe('… (len 1)')
+  })
   it('returns (none) for empty string', () => {
     expect(maskSecret('')).toBe('(none)')
   })
@@ -221,6 +227,17 @@ describe('describeActive', () => {
       profileStates: { work: { hasSecret: true, hasToken: true, configDirExists: false } },
     }))
     expect(lines.join('\n')).toContain('token:       present, capture date unknown')
+  })
+
+  it('shows unknown capture date when a login token has an unparseable tokenCapturedAt', () => {
+    const profile: Profile = { name: 'work', type: 'login', env: {}, hasToken: true, tokenCapturedAt: 'not-a-date' }
+    const lines = describeActive(snap({
+      profiles: [profile],
+      active: { name: 'work', managedKeys: [] },
+      profileStates: { work: { hasSecret: true, hasToken: true, configDirExists: false } },
+    }))
+    expect(lines.join('\n')).toContain('token:       present, capture date unknown')
+    expect(lines.join('\n')).not.toContain('null')
   })
 
   it('describes a bedrock profile with name, type and default config dir', () => {
