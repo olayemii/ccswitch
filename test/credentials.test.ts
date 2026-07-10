@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { readLiveCredential, writeLiveCredential, neutralizeLiveCredential } from '../src/credentials.js'
+import { readLiveCredential, writeLiveCredential, neutralizeLiveCredential, readAuthStatus } from '../src/credentials.js'
 import { mkdtempSync, writeFileSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -69,5 +69,23 @@ describe('credentials keychain backend', () => {
     await neutralizeLiveCredential('darwin', p, { run })
     let deleteArgs = run.mock.calls.find((c) => c[1][0] === 'delete-generic-password')![1] as string[]
     expect(deleteArgs[deleteArgs.length - 1]).toBe(keychainPath)
+  })
+})
+
+describe('readAuthStatus', () => {
+  it('parses loggedIn and email from status json', async () => {
+    const run = vi.fn().mockResolvedValue({
+      stdout: '{"loggedIn":true,"email":"a@b.com"}', stderr: '', code: 0,
+    })
+    expect(await readAuthStatus({ run })).toEqual({ loggedIn: true, email: 'a@b.com' })
+    expect(run).toHaveBeenCalledWith('claude', ['auth', 'status', '--json'])
+  })
+  it('returns loggedIn:false on non-zero exit', async () => {
+    const run = vi.fn().mockResolvedValue({ stdout: '', stderr: 'nope', code: 1 })
+    expect(await readAuthStatus({ run })).toEqual({ loggedIn: false })
+  })
+  it('returns loggedIn:false on unparseable output', async () => {
+    const run = vi.fn().mockResolvedValue({ stdout: 'not json', stderr: '', code: 0 })
+    expect(await readAuthStatus({ run })).toEqual({ loggedIn: false })
   })
 })
