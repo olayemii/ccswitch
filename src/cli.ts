@@ -275,6 +275,28 @@ export async function runCli(
     })
 
   program
+    .command('refresh <name>')
+    .option('--token <token>', 'bearer token to store (else read AWS_BEARER_TOKEN_BEDROCK from the environment)')
+    .description('replace a bedrock-key profile\'s token in place and re-derive its expiry')
+    .action(async (name: string, opts: { token?: string }) => {
+      if (!profileExists(name, p)) throw new Error(`Unknown profile: ${name}. See: ccswitch list`)
+      const profile = loadProfile(name, p)
+      if (profile.type !== 'bedrock-key') {
+        throw new Error(`Profile '${name}' is not a bedrock-key profile; refresh only applies to bedrock-key.`)
+      }
+      const token = opts.token ?? env.AWS_BEARER_TOKEN_BEDROCK
+      if (!token) throw new Error('No token to store. Pass --token <t> or set AWS_BEARER_TOKEN_BEDROCK.')
+      await setSecret(name, token, plat, p)
+      const exp = deriveBedrockKeyExpiry(token)
+      const updated: Profile = { ...profile }
+      if (exp) updated.credExpiresAt = exp
+      else delete updated.credExpiresAt   // new token isn't short-term → clear stale expiry
+      saveProfile(updated, p)
+      const badge = exp ? ` (expires ${exp.slice(0, 16).replace('T', ' ')} UTC)` : ''
+      process.stdout.write(`Refreshed Bedrock token for '${name}'.${badge}\n`)
+    })
+
+  program
     .command('add')
     .option('--force', 'overwrite existing profile')
     .description('guided setup (login / api-key / bedrock)')

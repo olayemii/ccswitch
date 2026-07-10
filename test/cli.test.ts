@@ -176,6 +176,26 @@ d2('cli save/token', () => {
     e2(code).toBe(1)
   })
 
+  i2('refresh replaces the token in place and updates credExpiresAt', async () => {
+    const p = paths(process.env, 'linux')
+    saveProfile({ name: 'brk', type: 'bedrock-key', env: { CLAUDE_CODE_USE_BEDROCK: '1' }, credExpiresAt: '2026-07-11T00:00:00.000Z' }, p)
+    await setSec('brk', 'old-token', 'linux', p)
+    const newToken = shortTermKey('20260712T000000Z', 43200)
+    const code = await runCli(['refresh', 'brk', '--token', newToken], { platform: 'linux' })
+    e2(code).toBe(0)
+    const saved = loadProf('brk', p)
+    e2(saved.credExpiresAt).toBe('2026-07-12T12:00:00.000Z')
+    e2(saved.type).toBe('bedrock-key')            // profile not recreated
+    e2(await getSec('brk', 'linux', p)).toBe(newToken)
+  })
+
+  i2('refresh rejects a non-bedrock-key profile', async () => {
+    const p = paths(process.env, 'linux')
+    saveProfile({ name: 'api', type: 'api-key', env: {} }, p)
+    const code = await runCli(['refresh', 'api', '--token', 'x'], { platform: 'linux' })
+    e2(code).toBe(1)                              // runCli returns 1 on thrown errors
+  })
+
   i2('save with an invalid (path-traversal) profile name is rejected', async () => {
     const err: string[] = []
     const origErrWrite = process.stderr.write
