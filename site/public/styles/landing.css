@@ -45,16 +45,6 @@ main {
   max-width: 600px;
 }
 
-.terminal-placeholder {
-  width: 100%;
-  max-width: 680px;
-  min-height: 260px;
-  background: var(--surface);
-  border-radius: 8px;
-  border: 1px solid #2a3040;
-  margin: 1.5rem 0;
-}
-
 .ctas {
   display: flex;
   align-items: center;

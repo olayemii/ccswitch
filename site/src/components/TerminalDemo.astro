@@ -1,0 +1,128 @@
+<div class="terminal" aria-label="Terminal demo showing ccswitch in action">
+  <div class="terminal-header">
+    <span class="dot red"></span>
+    <span class="dot yellow"></span>
+    <span class="dot green"></span>
+  </div>
+  <pre class="terminal-body"><span class="prompt">$</span> <span id="term-output"></span><span id="term-cursor" class="cursor">█</span></pre>
+  <noscript>
+    <pre class="terminal-body"><span class="prompt">$</span> ccswitch
+◆ Switch to
+│ personal (login)
+│ ● work (api-key)
+│ bedrock-prod (bedrock-key)
+└
+Switched to 'work'. Restart desktop app / IDE to pick up the change.
+
+<span class="prompt">$</span> ccuse bedrock-prod
+<span class="warn">Warning:</span> Profile 'bedrock-prod' Bedrock token expires in 45m. Refresh soon: ccswitch refresh bedrock-prod</pre>
+  </noscript>
+</div>
+
+<style>
+  .terminal {
+    width: 100%;
+    max-width: 680px;
+    background: var(--surface, #1a1f2e);
+    border-radius: 8px;
+    border: 1px solid #2a3040;
+    overflow: hidden;
+    font-family: var(--font-mono, monospace);
+    font-size: 0.85rem;
+    line-height: 1.5;
+  }
+  .terminal-header {
+    display: flex;
+    gap: 6px;
+    padding: 10px 14px;
+    background: #151a25;
+  }
+  .dot { width: 10px; height: 10px; border-radius: 50%; }
+  .dot.red { background: #ff5f56; }
+  .dot.yellow { background: #ffbd2e; }
+  .dot.green { background: #27c93f; }
+  .terminal-body {
+    padding: 1rem 1.25rem;
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    min-height: 200px;
+    color: var(--text, #e2e8f0);
+  }
+  .prompt { color: #27c93f; }
+  .cursor {
+    animation: blink 1s step-end infinite;
+  }
+  .warn { color: #fb923c; }
+  .highlight { color: #f59e0b; }
+  @keyframes blink {
+    50% { opacity: 0; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .cursor { animation: none; }
+  }
+</style>
+
+<script>
+  const FRAMES = [
+    { text: 'ccswitch', type: 'type', delay: 60 },
+    { text: '\n◆ Switch to\n│ personal (login)\n│ ● work (api-key)\n│ bedrock-prod (bedrock-key)\n└', type: 'print', delay: 400 },
+    { text: '\nSwitched to \'work\'. Restart desktop app / IDE to pick up the change.\n', type: 'print', delay: 1200 },
+    { text: '\n$ ccuse bedrock-prod', type: 'type', delay: 60 },
+    { text: '\nWarning: Profile \'bedrock-prod\' Bedrock token expires in 45m. Refresh soon: ccswitch refresh bedrock-prod', type: 'print', delay: 800 },
+  ];
+
+  function run() {
+    const output = document.getElementById('term-output');
+    const cursor = document.getElementById('term-cursor');
+    if (!output || !cursor) return;
+
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reducedMotion) {
+      output.innerHTML = '$ ' + FRAMES.map(f => f.text).join('');
+      cursor.style.display = 'none';
+      return;
+    }
+
+    let frameIdx = 0;
+    let charIdx = 0;
+    let buffer = '$ ';
+
+    function tick() {
+      if (frameIdx >= FRAMES.length) {
+        setTimeout(() => {
+          buffer = '$ ';
+          output.textContent = buffer;
+          frameIdx = 0;
+          charIdx = 0;
+          tick();
+        }, 3000);
+        return;
+      }
+
+      const frame = FRAMES[frameIdx];
+      if (frame.type === 'type') {
+        if (charIdx < frame.text.length) {
+          buffer += frame.text[charIdx];
+          output.textContent = buffer;
+          charIdx++;
+          setTimeout(tick, frame.delay);
+        } else {
+          charIdx = 0;
+          frameIdx++;
+          setTimeout(tick, 200);
+        }
+      } else {
+        buffer += frame.text;
+        output.textContent = buffer;
+        charIdx = 0;
+        frameIdx++;
+        setTimeout(tick, frame.delay);
+      }
+    }
+
+    tick();
+  }
+
+  run();
+</script>

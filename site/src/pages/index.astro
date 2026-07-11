@@ -1,4 +1,5 @@
 ---
+import TerminalDemo from '../components/TerminalDemo.astro'
 const title = 'ccswitch — Claude account switcher'
 const description = 'Switch between Claude Code profiles in seconds. Multi-account, per-shell isolation, expiry tracking.'
 ---
@@ -16,9 +17,7 @@ const description = 'Switch between Claude Code profiles in seconds. Multi-accou
     <section class="hero">
       <h1>One machine. Many Claude accounts.</h1>
       <p class="subheadline">Switch Claude Code profiles — logins, API keys, Bedrock — globally or per-shell, with expiry tracking and liveness probes.</p>
-      <div class="terminal-placeholder" id="terminal-demo">
-        <!-- Terminal animation inserted by Task 3 -->
-      </div>
+      <TerminalDemo />
       <div class="ctas">
         <a href="/docs/getting-started/installation" class="btn btn-primary">Get Started</a>
         <div class="install-snippet">
