@@ -20,6 +20,7 @@ import { readOAuthAccount, writeOAuthAccount } from './oauthAccount.js'
 import { tokenStaleWarning } from './tokenAge.js'
 import { diagnose, describeActive, type DoctorSnapshot, type ProfileState } from './doctor.js'
 import { deriveBedrockKeyExpiry, describeBedrockExpiry, bedrockExpiredMessage, bedrockExpiringWarning, bedrockLivenessWarning } from './bedrockExpiry.js'
+import { probeAnthropicKey } from './anthropicLiveness.js'
 
 function nowIso(): string {
   // Injected-free deterministic-ish timestamp; Date is allowed at runtime (not in workflow scripts).
@@ -401,8 +402,8 @@ export async function runCli(
   // Bare name → global switch (default command).
   program
     .argument('[name]', 'profile to switch to globally')
-    .option('--check', 'for a bedrock (SigV4) profile, probe credential validity via aws sts get-caller-identity')
-    .action(async (name: string | undefined, opts: { check?: boolean }) => {
+    .option('--no-check', 'skip the automatic credential liveness probe (Bedrock SigV4 / Anthropic API key)')
+    .action(async (name: string | undefined, opts: { check: boolean }) => {
       let target = name
       if (!target) {
         const profiles = listProfiles(p)
@@ -433,14 +434,31 @@ export async function runCli(
       if (result.warning) {
         process.stderr.write(`\nWarning: ${result.warning}\n`)
       }
-      if (opts.check && profile.type === 'bedrock') {
+      if (opts.check !== false && profile.type === 'bedrock') {
         const awsProfile = profile.env.AWS_PROFILE ?? ''
         try {
           const r = await run('aws', ['sts', 'get-caller-identity', '--profile', awsProfile])
           const w = bedrockLivenessWarning(awsProfile, r.code)
-          if (w) process.stderr.write(`\nWarning: ${w}\n`)
+          if (w) {
+            process.stderr.write(`\nWarning: ${w}\n`)
+            const doLogin = await clack.confirm({ message: `Run 'aws sso login --profile ${awsProfile}' now?`, initialValue: true })
+            if (doLogin === true) {
+              await runInteractive('aws', ['sso', 'login', '--profile', awsProfile])
+            }
+          }
         } catch (err: any) {
           process.stderr.write(`\nWarning: liveness check could not run (${err?.message ?? err}). Is the AWS CLI installed?\n`)
+        }
+      }
+      if (opts.check !== false && profile.type === 'api-key') {
+        const secret = await getSecret(profile.name, plat, p)
+        if (secret) {
+          const probe = await probeAnthropicKey(secret)
+          if (probe.result === 'invalid') {
+            process.stderr.write(`\nError: API key for '${profile.name}' is invalid or revoked (HTTP ${probe.status}). Replace it: ccswitch add\n`)
+          } else if (probe.result === 'unknown') {
+            process.stderr.write(`\nWarning: could not verify API key (${probe.error ?? `HTTP ${probe.status}`}). It may still work.\n`)
+          }
         }
       }
     })
