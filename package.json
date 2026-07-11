@@ -1,5 +1,5 @@
 {
-  "name": "ccswitch",
+  "name": "@olayemii/ccswitch",
   "version": "0.1.0",
   "description": "Switch between Claude Code accounts and profiles (login, API key, Bedrock) globally or per-shell, with expiry tracking and liveness probes.",
   "type": "module",

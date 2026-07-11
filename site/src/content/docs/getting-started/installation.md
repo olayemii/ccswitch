@@ -11,7 +11,7 @@ description: Install ccswitch and set it up on your system
 ## Install from npm
 
 ```bash
-npm install -g ccswitch
+npm install -g @olayemii/ccswitch
 ```
 
 ## Install from source
