@@ -1,5 +1,11 @@
 # ccswitch — Claude account switcher
 
+[![npm version](https://img.shields.io/npm/v/@olayemii/ccswitch.svg?color=f59e0b)](https://www.npmjs.com/package/@olayemii/ccswitch)
+[![license: MIT](https://img.shields.io/npm/l/@olayemii/ccswitch.svg?color=f59e0b)](LICENSE)
+[![docs](https://img.shields.io/badge/docs-olayemii.github.io%2Fccswitch-f59e0b.svg)](https://olayemii.github.io/ccswitch/)
+
+**📖 Docs & guide → https://olayemii.github.io/ccswitch/**
+
 Switch the active Claude Code account between any number of profiles —
 subscription logins, API keys, Bedrock (AWS credentials), and Bedrock API
 keys — across macOS, Windows, and Linux. Supports two modes:
@@ -12,12 +18,18 @@ keys — across macOS, Windows, and Linux. Supports two modes:
 ## Install
 
 ```bash
-npm install
-npm run build
-npm link
+npm install -g @olayemii/ccswitch
 ```
 
-This puts `ccswitch` on your `PATH` (bin entry `ccswitch` → `dist/bin.js`).
+Or from source:
+
+```bash
+git clone https://github.com/olayemii/ccswitch.git
+cd ccswitch
+npm install && npm run build && npm link
+```
+
+Either way puts `ccswitch` on your `PATH` (bin entry `ccswitch` → `dist/bin.js`).
 Requires Node >= 18.
 
 ## Commands
