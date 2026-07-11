@@ -1,0 +1,104 @@
+/* ccswitch docs theme — mirrors the landing page design system:
+   IBM Plex Mono headings · DM Sans body · Space Mono code · amber accent ·
+   near-black surfaces · terminal-framed code blocks. */
+
+:root {
+  --sl-font: 'DM Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --sl-font-mono: 'Space Mono', 'SFMono-Regular', ui-monospace, Consolas, monospace;
+
+  /* Amber accent (both themes) */
+  --sl-color-accent-low: #3a2905;
+  --sl-color-accent: #f59e0b;
+  --sl-color-accent-high: #fcd34d;
+}
+
+/* ---- Dark theme: the landing's near-black palette ---- */
+:root[data-theme='dark'] {
+  --sl-color-white: #f2f5fa;
+  --sl-color-gray-1: #e8ecf3;
+  --sl-color-gray-2: #c3c9d4;
+  --sl-color-gray-3: #9aa3b2;
+  --sl-color-gray-4: #6b7280;
+  --sl-color-gray-5: #3a3f4b;
+  --sl-color-gray-6: #23262f;
+  --sl-color-gray-7: #14161d;
+  --sl-color-black: #0a0b0e;
+
+  --sl-color-bg: #0a0b0e;
+  --sl-color-bg-nav: #0b0d12;
+  --sl-color-bg-sidebar: #0b0d12;
+  --sl-color-bg-inline-code: #14161d;
+  --sl-color-hairline-shade: #16181f;
+  --sl-color-hairline: #1e2129;
+  --sl-color-hairline-light: #23262f;
+
+  /* Expressive Code frames → landing terminal look */
+  --ec-frm-edBg: #0d0f16;
+  --ec-frm-trmBg: #0d0f16;
+  --ec-frm-trmTtbBg: #151822;
+  --ec-frm-trmTtbBrdBtmCol: #20242f;
+  --ec-frm-trmTtbDotsFg: #565f6e;
+  --ec-brdCol: #23262f;
+  --ec-frm-inlineBg: #14161d;
+}
+
+/* ---- Light theme: keep it clean, amber-accented ---- */
+:root[data-theme='light'] {
+  --sl-color-bg-inline-code: #f4f1ea;
+  --ec-frm-edBg: #faf9f6;
+  --ec-frm-trmBg: #faf9f6;
+}
+
+/* ---- IBM Plex Mono headings, like the landing hero ---- */
+.sl-markdown-content h1,
+.sl-markdown-content h2,
+.sl-markdown-content h3,
+.sl-markdown-content h4,
+.content-panel h1,
+h1.hero-title,
+main h1 {
+  font-family: 'IBM Plex Mono', 'Space Mono', ui-monospace, monospace;
+  letter-spacing: -0.025em;
+  font-weight: 600;
+}
+
+/* ---- Wordmark: ❯ ccswitch, matching the landing top bar ---- */
+.site-title {
+  font-family: var(--sl-font-mono);
+  font-weight: 700;
+  font-size: 1.25rem;
+  letter-spacing: -0.02em;
+}
+.site-title::before {
+  content: '❯\00a0';
+  color: var(--sl-color-accent);
+}
+
+/* ---- Colour the terminal dots red / yellow / green ----
+   EC masks a single element into three circles (at ~13% / 50% / 87% of its
+   width). Painting a 3-stop gradient behind that mask tints each dot. */
+.expressive-code .frame.is-terminal .header::before {
+  background-color: transparent;
+  background-image: linear-gradient(
+    90deg,
+    #ff5f56 0 33.33%,
+    #ffbd2e 33.33% 66.66%,
+    #27c93f 66.66%
+  );
+}
+
+/* ---- Reserve the scrollbar gutter so navigation doesn't shift the page ---- */
+html {
+  scrollbar-gutter: stable;
+}
+
+/* ---- Amber hairline glow at the very top, echoing the hero bloom ---- */
+:root[data-theme='dark'] .main-frame::before {
+  content: '';
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: 320px;
+  pointer-events: none;
+  z-index: 0;
+  background: radial-gradient(60% 100% at 50% 0%, rgba(245, 158, 11, 0.08), transparent 70%);
+}

@@ -1,0 +1,11 @@
+# build output
+dist/
+# generated types & dev cache
+.astro/
+# dependencies
+node_modules/
+# logs
+*.log
+# env
+.env
+.env.production

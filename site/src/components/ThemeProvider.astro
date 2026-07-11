@@ -1,0 +1,45 @@
+---
+// Override of Starlight's ThemeProvider: defaults first-time visitors to dark
+// (to match the landing page) while keeping the light/dark/auto toggle working.
+// Only the initial fallback changed — everything else mirrors the default.
+import { Icon } from '@astrojs/starlight/components';
+---
+
+{/* This is intentionally inlined to avoid FOUC. */}
+<script is:inline>
+	window.StarlightThemeProvider = (() => {
+		// First-time visitors default to dark (to match the landing page). Seeding
+		// localStorage makes Starlight's ThemeSelect resolve to dark too, instead of
+		// coercing "no preference" to auto/system. Explicit choices still persist.
+		if (typeof localStorage !== 'undefined' && localStorage.getItem('starlight-theme') === null) {
+			localStorage.setItem('starlight-theme', 'dark');
+		}
+		const storedTheme =
+			typeof localStorage !== 'undefined' && localStorage.getItem('starlight-theme');
+		const theme = storedTheme || 'dark';
+		document.documentElement.dataset.theme = theme === 'light' ? 'light' : 'dark';
+		return {
+			updatePickers(theme = storedTheme || 'dark') {
+				document.querySelectorAll('starlight-theme-select').forEach((picker) => {
+					const select = picker.querySelector('select');
+					if (select) select.value = theme;
+					/** @type {HTMLTemplateElement | null} */
+					const tmpl = document.querySelector(`#theme-icons`);
+					const newIcon = tmpl && tmpl.content.querySelector('.' + theme);
+					if (newIcon) {
+						const oldIcon = picker.querySelector('svg.label-icon');
+						if (oldIcon) {
+							oldIcon.replaceChildren(...newIcon.cloneNode(true).childNodes);
+						}
+					}
+				});
+			},
+		};
+	})();
+</script>
+
+<template id="theme-icons">
+	<Icon name="sun" class="light" />
+	<Icon name="moon" class="dark" />
+	<Icon name="laptop" class="auto" />
+</template>

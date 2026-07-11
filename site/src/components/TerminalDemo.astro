@@ -1,127 +1,163 @@
-<div class="terminal" aria-label="Terminal demo showing ccswitch in action">
+---
+// Terminal demo: a Starship powerline prompt, a typed `ccswitch` command, the
+// interactive selection screen, and the switch result.
+// Powerline separators / icons use an explicit 'Symbols Nerd Font' family
+// (.nf) — mid-chain font fallback does not reach PUA glyphs. Regular text
+// stays in Space Mono.
+---
+
+<div class="terminal" aria-label="Terminal demo showing ccswitch selecting a profile">
   <div class="terminal-header">
     <span class="dot red"></span>
     <span class="dot yellow"></span>
     <span class="dot green"></span>
+    <span class="term-title">ccswitch — zsh</span>
   </div>
-  <pre class="terminal-body"><span class="prompt">$</span> <span id="term-output"></span><span id="term-cursor" class="cursor">█</span></pre>
-  <noscript>
-    <pre class="terminal-body"><span class="prompt">$</span> ccswitch
-◆ Switch to
-│ personal (login)
-│ ● work (api-key)
-│ bedrock-prod (bedrock-key)
-└
-Switched to 'work'. Restart desktop app / IDE to pick up the change.
-
-<span class="prompt">$</span> ccuse bedrock-prod
-<span class="warn">Warning:</span> Profile 'bedrock-prod' Bedrock token expires in 45m. Refresh soon: ccswitch refresh bedrock-prod</pre>
-  </noscript>
+  <pre class="terminal-body"><span class="pl"><span class="seg dir"><span class="nf">&#xF07C;</span> ~/dev/ccswitch</span><span class="sep dir-git"></span><span class="seg git"><span class="nf">&#xE0A0;</span> main</span><span class="sep git-end"></span></span> <span id="term-line"></span><span id="term-cursor" class="cursor">█</span></pre>
 </div>
 
 <style>
   .terminal {
     width: 100%;
-    max-width: 680px;
-    background: var(--surface, #1a1f2e);
-    border-radius: 8px;
-    border: 1px solid #2a3040;
+    max-width: 640px;
+    background: #0d0f16;
+    border-radius: 10px;
+    border: 1px solid #23262f;
     overflow: hidden;
     font-family: var(--font-mono, monospace);
     font-size: 0.85rem;
-    line-height: 1.5;
   }
   .terminal-header {
     display: flex;
-    gap: 6px;
-    padding: 10px 14px;
-    background: #151a25;
+    align-items: center;
+    gap: 7px;
+    padding: 9px 14px;
+    background: #151822;
+    border-bottom: 1px solid #20242f;
   }
-  .dot { width: 10px; height: 10px; border-radius: 50%; }
+  .dot { width: 11px; height: 11px; border-radius: 50%; }
   .dot.red { background: #ff5f56; }
   .dot.yellow { background: #ffbd2e; }
   .dot.green { background: #27c93f; }
+  .term-title {
+    margin-left: 8px;
+    color: #6b7280;
+    font-family: var(--font-sans, sans-serif);
+    font-size: 0.72rem;
+    letter-spacing: 0.02em;
+  }
   .terminal-body {
-    padding: 1rem 1.25rem;
+    padding: 1.1rem 1.2rem 1.3rem;
     margin: 0;
     white-space: pre-wrap;
     word-break: break-word;
-    min-height: 200px;
-    color: var(--text, #e2e8f0);
+    line-height: 1.7;
+    color: #d7dbe4;
+    text-align: left;
+    min-height: 18rem;
   }
-  .prompt { color: #27c93f; }
-  .cursor {
-    animation: blink 1s step-end infinite;
+
+  /* Nerd Font glyphs must be addressed explicitly (see comment above) */
+  .nf { font-family: 'Symbols Nerd Font'; }
+
+  /* --- Powerline prompt (Tokyo Night: blue dir, green git). Arrows are
+     CSS-drawn clip-path triangles at the exact segment height, so they tile
+     pixel-perfectly with no seam and no vertical bulge. --- */
+  .pl { white-space: nowrap; }
+  .seg {
+    display: inline-block;
+    vertical-align: top;
+    height: 1.55em;
+    line-height: 1.55em;
+    padding: 0 0.5em;
   }
-  .warn { color: #fb923c; }
-  .highlight { color: #f59e0b; }
-  @keyframes blink {
-    50% { opacity: 0; }
+  .seg.dir { background: #f59e0b; color: #1c1400; font-weight: 700; }
+  .seg.git { background: #9ece6a; color: #1a1b26; font-weight: 700; }
+  .sep {
+    display: inline-block;
+    vertical-align: top;
+    position: relative;
+    width: 0.62em;
+    height: 1.55em;
   }
+  .sep::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    clip-path: polygon(0 0, 0 100%, 100% 50%);
+  }
+  .sep.dir-git { background: #9ece6a; }         /* right side = green segment */
+  .sep.dir-git::before { background: #f59e0b; } /* left triangle = amber dir segment */
+  .sep.git-end::before { background: #9ece6a; } /* trailing green arrow into bg */
+
+  /* --- Session text --- */
+  .pchar { color: #9ece6a; font-weight: 700; }
+  .mp    { color: #9ece6a; font-weight: 700; }  /* ◆ menu prompt */
+  .mb    { color: #565f6e; }                    /* │ └ bars */
+  .mo    { color: #9aa4b8; }                    /* unselected option */
+  .on    { color: #9ece6a; }                    /* ● active marker */
+  .sel   { color: #c8d3f5; font-weight: 700; }  /* selected option */
+  .mt    { color: #6b7280; }                    /* (auth-type) */
+  .ok    { color: #9ece6a; }
+  .warn  { color: #fbbf24; font-weight: 700; }
+
+  .cursor { animation: blink 1.1s step-end infinite; color: #d7dbe4; }
+  @keyframes blink { 50% { opacity: 0; } }
   @media (prefers-reduced-motion: reduce) {
     .cursor { animation: none; }
   }
 </style>
 
 <script>
-  const FRAMES = [
-    { text: 'ccswitch', type: 'type', delay: 60 },
-    { text: '\n◆ Switch to\n│ personal (login)\n│ ● work (api-key)\n│ bedrock-prod (bedrock-key)\n└', type: 'print', delay: 400 },
-    { text: '\nSwitched to \'work\'. Restart desktop app / IDE to pick up the change.\n', type: 'print', delay: 1200 },
-    { text: '\n$ ccuse bedrock-prod', type: 'type', delay: 60 },
-    { text: '\nWarning: Profile \'bedrock-prod\' Bedrock token expires in 45m. Refresh soon: ccswitch refresh bedrock-prod', type: 'print', delay: 800 },
-  ];
+  const CMD = 'ccswitch';
+  const MENU =
+    '\n<span class="mp">◆</span>  Switch profile' +
+    '\n<span class="mb">│</span>  <span class="mo">○ personal</span>      <span class="mt">(login)</span>' +
+    '\n<span class="mb">│</span>  <span class="mo">○ work</span>          <span class="mt">(api-key)</span>' +
+    '\n<span class="mb">│</span>  <span class="on">●</span> <span class="sel">bedrock-prod</span>  <span class="mt">(bedrock-key)</span>' +
+    '\n<span class="mb">└</span>';
+  const RESULT =
+    '\n<span class="ok">✓</span> Switched to <span class="ok">\'bedrock-prod\'</span> · Bedrock (SigV4)' +
+    '\n<span class="warn">⚠</span> Token expires in <span class="warn">45m</span>. Refresh: ccswitch refresh bedrock-prod\n';
+
+  function esc(s) {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
 
   function run() {
-    const output = document.getElementById('term-output');
-    const cursor = document.getElementById('term-cursor');
-    if (!output || !cursor) return;
+    const line = document.getElementById('term-line');
+    if (!line) return;
 
-    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (reducedMotion) {
-      output.innerHTML = '$ ' + FRAMES.map(f => f.text).join('');
-      cursor.style.display = 'none';
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduced) {
+      line.innerHTML = esc(CMD) + MENU + RESULT;
       return;
     }
 
-    let frameIdx = 0;
-    let charIdx = 0;
-    let buffer = '$ ';
-
-    function tick() {
-      if (frameIdx >= FRAMES.length) {
-        setTimeout(() => {
-          buffer = '$ ';
-          output.textContent = buffer;
-          frameIdx = 0;
-          charIdx = 0;
-          tick();
-        }, 3000);
-        return;
-      }
-
-      const frame = FRAMES[frameIdx];
-      if (frame.type === 'type') {
-        if (charIdx < frame.text.length) {
-          buffer += frame.text[charIdx];
-          output.textContent = buffer;
-          charIdx++;
-          setTimeout(tick, frame.delay);
-        } else {
-          charIdx = 0;
-          frameIdx++;
-          setTimeout(tick, 200);
-        }
+    let i = 0;
+    function type() {
+      if (i <= CMD.length) {
+        line.innerHTML = esc(CMD.slice(0, i));
+        i++;
+        setTimeout(type, 70);
       } else {
-        buffer += frame.text;
-        output.textContent = buffer;
-        charIdx = 0;
-        frameIdx++;
-        setTimeout(tick, frame.delay);
+        setTimeout(showMenu, 400);
       }
     }
-
-    tick();
+    function showMenu() {
+      line.innerHTML = esc(CMD) + MENU;
+      setTimeout(showResult, 1100);
+    }
+    function showResult() {
+      line.innerHTML = esc(CMD) + MENU + RESULT;
+      setTimeout(reset, 4200);
+    }
+    function reset() {
+      line.innerHTML = '';
+      i = 0;
+      setTimeout(type, 800);
+    }
+    type();
   }
 
   run();

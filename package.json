@@ -1,13 +1,40 @@
 {
   "name": "ccswitch",
   "version": "0.1.0",
+  "description": "Switch between Claude Code accounts and profiles (login, API key, Bedrock) globally or per-shell, with expiry tracking and liveness probes.",
   "type": "module",
   "bin": { "ccswitch": "dist/bin.js" },
   "engines": { "node": ">=18" },
+  "license": "MIT",
+  "author": "Olayemii Garuba",
+  "homepage": "https://olayemii.github.io/ccswitch",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/olayemii/ccswitch.git"
+  },
+  "bugs": {
+    "url": "https://github.com/olayemii/ccswitch/issues"
+  },
+  "keywords": [
+    "claude",
+    "claude-code",
+    "anthropic",
+    "cli",
+    "profiles",
+    "account-switcher",
+    "credentials",
+    "bedrock"
+  ],
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "test": "vitest run",
     "build": "tsup",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "commander": "^12.1.0",

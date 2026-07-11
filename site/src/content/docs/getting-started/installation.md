@@ -17,7 +17,7 @@ npm install -g ccswitch
 ## Install from source
 
 ```bash
-git clone https://github.com/ccswitch/ccswitch.git
+git clone https://github.com/olayemii/ccswitch.git
 cd ccswitch
 npm install
 npm run build
