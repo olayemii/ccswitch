@@ -1,7 +1,7 @@
 # ccswitch — Claude account switcher
 
 [![npm version](https://img.shields.io/npm/v/@olayemii/ccswitch.svg?color=f59e0b)](https://www.npmjs.com/package/@olayemii/ccswitch)
-[![license: MIT](https://img.shields.io/npm/l/@olayemii/ccswitch.svg?color=f59e0b)](LICENSE)
+[![license: MIT](https://img.shields.io/badge/license-MIT-f59e0b.svg)](LICENSE)
 [![docs](https://img.shields.io/badge/docs-olayemii.github.io%2Fccswitch-f59e0b.svg)](https://olayemii.github.io/ccswitch/)
 
 **📖 Docs & guide → https://olayemii.github.io/ccswitch/**
