@@ -31,7 +31,32 @@ const description = 'Switch between Claude Code profiles in seconds. Multi-accou
         </div>
       </div>
     </section>
+
+    <section class="features">
+      <div class="feature-card">
+        <h3>Multi-account</h3>
+        <p>Login, API key, Bedrock SigV4, and Bedrock API key — all managed as named profiles.</p>
+      </div>
+      <div class="feature-card">
+        <h3>Per-shell isolation</h3>
+        <p>Run different accounts in parallel terminals. Each shell gets its own profile, config, and history.</p>
+      </div>
+      <div class="feature-card">
+        <h3>Expiry tracking</h3>
+        <p>Short-lived tokens are tracked automatically. Expired keys are blocked at switch time with a clear refresh path.</p>
+      </div>
+      <div class="feature-card">
+        <h3>Cross-platform</h3>
+        <p>macOS, Windows, and Linux. Secrets stored in the OS keychain — never in plaintext config files.</p>
+      </div>
+    </section>
   </main>
+
+  <footer>
+    <a href="https://github.com/ccswitch/ccswitch">GitHub</a>
+    <a href="https://www.npmjs.com/package/ccswitch">npm</a>
+    <span>MIT License</span>
+  </footer>
 
   <script>
     document.querySelectorAll('.copy-btn').forEach(btn => {
