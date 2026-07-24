@@ -81,7 +81,7 @@ export function diagnose(snap: DoctorSnapshot): Finding[] {
       }
       const stale = tokenStaleWarning(profile, snap.now)
       if (stale) findings.push({ level: 'warn', message: stale })
-    } else if (profile.type === 'api-key' || profile.type === 'bedrock-key') {
+    } else if (profile.type === 'api-key' || profile.type === 'bedrock-key' || profile.type === 'custom') {
       if (!st.hasSecret) {
         findings.push({
           level: 'error',
@@ -140,8 +140,12 @@ export function describeActive(snap: DoctorSnapshot): string[] {
   lines.push(`  type:        ${profile.type}`)
   lines.push(`  config dir:  ${profile.configDir ?? '(default)'}`)
 
-  if (profile.type === 'api-key' || profile.type === 'bedrock-key') {
+  if (profile.type === 'api-key' || profile.type === 'bedrock-key' || profile.type === 'custom') {
     lines.push(`  credential:  ${st?.secretPreview ? maskSecret(st.secretPreview) : '(missing)'}`)
+  }
+
+  if (profile.type === 'custom') {
+    lines.push(`  base url:    ${profile.env.ANTHROPIC_BASE_URL ?? '(missing)'}`)
   }
 
   if (profile.type === 'bedrock-key') {
@@ -197,6 +201,14 @@ function checkActiveConsistency(active: Profile, snap: DoctorSnapshot, findings:
     case 'bedrock-key':
       if (!env.AWS_BEARER_TOKEN_BEDROCK) {
         findings.push({ level: 'error', message: `Active profile '${active.name}' is bedrock-key, but AWS_BEARER_TOKEN_BEDROCK is not set in settings.json. Re-switch: ccswitch ${active.name} (or, if the token has expired, ccswitch refresh ${active.name}).` })
+      }
+      break
+    case 'custom':
+      if (hasHelper) {
+        findings.push({ level: 'warn', message: `Active profile is custom, but settings.json still has an apiKeyHelper — it may override the endpoint auth. Re-switch: ccswitch ${active.name}` })
+      }
+      if (!env.ANTHROPIC_BASE_URL || !env.ANTHROPIC_AUTH_TOKEN) {
+        findings.push({ level: 'error', message: `Active profile '${active.name}' is custom, but ANTHROPIC_BASE_URL/ANTHROPIC_AUTH_TOKEN are not both set in settings.json. Re-switch: ccswitch ${active.name}` })
       }
       break
   }

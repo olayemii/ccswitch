@@ -25,13 +25,26 @@ function pruneBackups(file: string, keep: number): void {
   }
 }
 
+// Model-routing overrides a `custom` (Anthropic-compatible endpoint) profile may
+// pin. Managed so switching to any other profile clears them — otherwise a stale
+// ANTHROPIC_MODEL from a custom endpoint would silently apply to a subscription.
+export const CUSTOM_MODEL_KEYS = [
+  'ANTHROPIC_MODEL',
+  'ANTHROPIC_DEFAULT_OPUS_MODEL',
+  'ANTHROPIC_DEFAULT_SONNET_MODEL',
+  'ANTHROPIC_DEFAULT_HAIKU_MODEL',
+  'CLAUDE_CODE_SUBAGENT_MODEL',
+] as const
+
 export const MANAGED_ENV_KEYS = [
   'ANTHROPIC_API_KEY',
   'ANTHROPIC_AUTH_TOKEN',
+  'ANTHROPIC_BASE_URL',
   'CLAUDE_CODE_USE_BEDROCK',
   'AWS_PROFILE',
   'AWS_REGION',
   'AWS_BEARER_TOKEN_BEDROCK',
+  ...CUSTOM_MODEL_KEYS,
 ] as const
 
 export interface DesiredSettings {

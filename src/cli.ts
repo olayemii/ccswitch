@@ -4,7 +4,7 @@ import { getPlatform, paths } from './platform.js'
 import { listProfiles, loadProfile, readActive, removeProfile, profileExists, writeActive, assertValidProfileName } from './profiles.js'
 import { getSecret, deleteSecret } from './secretStore.js'
 import { buildEnvExport, buildEnvUnset } from './envexport.js'
-import { loadSettings, saveSettings } from './settings.js'
+import { loadSettings, saveSettings, CUSTOM_MODEL_KEYS } from './settings.js'
 import { writeLiveCredential, neutralizeLiveCredential, readLiveCredential, readAuthStatus } from './credentials.js'
 import { buildApiKeyHelperCommand, captureOAuthToken } from './helpers.js'
 import { globalSwitch } from './switch.js'
@@ -25,6 +25,35 @@ import { probeAnthropicKey } from './anthropicLiveness.js'
 function nowIso(): string {
   // Injected-free deterministic-ish timestamp; Date is allowed at runtime (not in workflow scripts).
   return new Date().toISOString().replace(/[:.]/g, '-')
+}
+
+// Pick only the known model-routing overrides out of an env-like object.
+export function pickModelOverrides(env: Record<string, string | undefined>): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const key of CUSTOM_MODEL_KEYS) {
+    const v = env[key]
+    if (typeof v === 'string' && v !== '') out[key] = v
+  }
+  return out
+}
+
+// Parse a "KEY=value,KEY=value" string of model overrides. Rejects any key that
+// isn't a recognized model-routing var so a typo can't inject arbitrary settings.
+export function parseModelOverrides(input: string): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const pair of input.split(',')) {
+    const t = pair.trim()
+    if (!t) continue
+    const eq = t.indexOf('=')
+    if (eq === -1) throw new Error(`Bad model override '${t}'. Use KEY=value.`)
+    const key = t.slice(0, eq).trim()
+    const value = t.slice(eq + 1).trim()
+    if (!(CUSTOM_MODEL_KEYS as readonly string[]).includes(key)) {
+      throw new Error(`Unknown model key '${key}'. Allowed: ${CUSTOM_MODEL_KEYS.join(', ')}.`)
+    }
+    if (value) out[key] = value
+  }
+  return out
 }
 
 export async function runCli(
@@ -86,9 +115,12 @@ export async function runCli(
           '               settings.json in PLAINTEXT (cleared when you switch away).',
           '               Short-term keys expire; ccswitch tracks expiry and blocks switching',
           '               to an expired one. Refresh with: ccswitch refresh <name>.',
+          '  custom       Anthropic-compatible endpoint (DeepSeek, Moonshot, OpenRouter, vLLM).',
+          '               Sets ANTHROPIC_BASE_URL + ANTHROPIC_AUTH_TOKEN (from the keychain) and',
+          '               optional model overrides. Cleared when you switch away.',
           '',
           'Common commands:',
-          '  ccswitch add               guided setup (login / api-key / bedrock / bedrock-key)',
+          '  ccswitch add               guided setup (login / api-key / bedrock / bedrock-key / custom)',
           '  ccswitch save <name> --type <t>   snapshot current live state into a profile',
           '  ccswitch token <name>      capture a per-shell OAuth token (login profiles)',
           '  ccswitch refresh <name>    replace a bedrock-key token in place (re-derives expiry)',
@@ -179,7 +211,7 @@ export async function runCli(
       for (const prof of profiles) {
         const secretSlot = prof.type === 'bedrock' ? null : 'secret'
         const secret = secretSlot === null ? null : await getSecret(prof.name, plat, p)
-        const isActiveKey = prof.name === activeName && (prof.type === 'api-key' || prof.type === 'bedrock-key')
+        const isActiveKey = prof.name === activeName && (prof.type === 'api-key' || prof.type === 'bedrock-key' || prof.type === 'custom')
         profileStates[prof.name] = {
           hasSecret: secret !== null,
           hasToken: prof.type === 'login' ? (await getSecret(prof.name, plat, p, { slot: 'token' })) !== null : false,
@@ -224,7 +256,7 @@ export async function runCli(
 
   program
     .command('save <name>')
-    .requiredOption('--type <type>', 'login | api-key | bedrock')
+    .requiredOption('--type <type>', 'login | api-key | bedrock | bedrock-key | custom')
     .option('--force', 'overwrite existing profile')
     .description('snapshot current live state into a profile')
     .action(async (name: string, opts: { type: string; force?: boolean }) => {
@@ -259,6 +291,15 @@ export async function runCli(
         profile.env = { CLAUDE_CODE_USE_BEDROCK: '1', ...(env.AWS_REGION ? { AWS_REGION: env.AWS_REGION } : {}) }
         const exp = deriveBedrockKeyExpiry(token)
         if (exp) profile.credExpiresAt = exp
+      } else if (opts.type === 'custom') {
+        const settings = loadSettings(p.settingsFile)
+        const e = settings?.env ?? {}
+        const baseUrl = e.ANTHROPIC_BASE_URL
+        const token = e.ANTHROPIC_AUTH_TOKEN
+        if (!baseUrl) throw new Error('No ANTHROPIC_BASE_URL in settings to snapshot.')
+        if (!token) throw new Error('No ANTHROPIC_AUTH_TOKEN in settings to snapshot.')
+        await setSecret(name, token, plat, p)
+        profile.env = { ANTHROPIC_BASE_URL: baseUrl, ...pickModelOverrides(e) }
       } else {
         const settings = loadSettings(p.settingsFile)
         profile.env = {
@@ -309,7 +350,7 @@ export async function runCli(
   program
     .command('add')
     .option('--force', 'overwrite existing profile')
-    .description('guided setup (login / api-key / bedrock)')
+    .description('guided setup (login / api-key / bedrock / bedrock-key / custom)')
     .action(async (opts: { force?: boolean }) => {
       const name = (await clack.text({ message: 'Profile name' })) as string
       if (clack.isCancel(name)) return
@@ -322,6 +363,7 @@ export async function runCli(
           { value: 'api-key', label: 'API key' },
           { value: 'bedrock', label: 'Bedrock (AWS credentials)' },
           { value: 'bedrock-key', label: 'Bedrock API key' },
+          { value: 'custom', label: 'Custom Anthropic-compatible endpoint (DeepSeek, Moonshot, OpenRouter…)' },
         ],
       })) as string
       if (clack.isCancel(type) || !isAuthType(type)) return
@@ -343,6 +385,19 @@ export async function runCli(
         const awsProfile = (await clack.text({ message: 'AWS_PROFILE' })) as string
         const region = (await clack.text({ message: 'AWS_REGION' })) as string
         profile.env = { CLAUDE_CODE_USE_BEDROCK: '1', AWS_PROFILE: awsProfile, AWS_REGION: region }
+      } else if (type === 'custom') {
+        const baseUrl = (await clack.text({ message: 'ANTHROPIC_BASE_URL (e.g. https://api.deepseek.com/anthropic)' })) as string
+        if (clack.isCancel(baseUrl)) return
+        if (!baseUrl) throw new Error('ANTHROPIC_BASE_URL is required for a custom endpoint.')
+        const token = (await clack.password({ message: 'ANTHROPIC_AUTH_TOKEN (bearer token / provider API key)' })) as string
+        if (clack.isCancel(token)) return
+        const models = (await clack.text({
+          message: `Model overrides (optional, KEY=value comma-separated). Keys: ${CUSTOM_MODEL_KEYS.join(', ')}`,
+          placeholder: '',
+        })) as string
+        if (clack.isCancel(models)) return
+        await setSecret(name, token, plat, p)
+        profile.env = { ANTHROPIC_BASE_URL: baseUrl, ...(models ? parseModelOverrides(models) : {}) }
       } else {
         clack.log.info(`Launching 'claude auth login' — sign in as the account for '${name}'.`)
         const result = await captureLogin({
