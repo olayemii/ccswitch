@@ -179,6 +179,27 @@ function checkActiveConsistency(active: Profile, snap: DoctorSnapshot, findings:
   const env = snap.settings?.env ?? {}
   const hasHelper = typeof snap.settings?.apiKeyHelper === 'string'
 
+  // Custom-endpoint keys left in settings.json while a non-custom profile is
+  // active. `switch` only clears keys it previously managed, so a base URL/token
+  // that arrived any other way (a hand-edit, or `save --type custom` before this
+  // profile was ever switched to) survives and silently outranks the active auth.
+  if (active.type !== 'custom') {
+    if (env.ANTHROPIC_AUTH_TOKEN) {
+      findings.push({
+        level: 'error',
+        message: `settings.json still has ANTHROPIC_AUTH_TOKEN from a custom endpoint, but the active profile '${active.name}' is ${active.type}. ` +
+          `It overrides '${active.name}' credentials. Remove it from settings.json, then re-switch: ccswitch ${active.name}`,
+      })
+    }
+    if (env.ANTHROPIC_BASE_URL) {
+      findings.push({
+        level: 'warn',
+        message: `settings.json has ANTHROPIC_BASE_URL ('${env.ANTHROPIC_BASE_URL}') while the active profile '${active.name}' is ${active.type} — ` +
+          `its credentials will be sent to that endpoint. Intentional (a proxy) is fine; otherwise remove it and re-switch: ccswitch ${active.name}`,
+      })
+    }
+  }
+
   switch (active.type) {
     case 'login':
       if (hasHelper) {

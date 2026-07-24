@@ -67,7 +67,7 @@ describe('cli read commands', () => {
 import { describe as d2, it as i2, expect as e2 } from 'vitest'
 import { getSecret as getSec, setSecret as setSec } from '../src/secretStore.js'
 import { loadProfile as loadProf } from '../src/profiles.js'
-import { writeFileSync, mkdirSync } from 'node:fs'
+import { writeFileSync, mkdirSync, readFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 
 function shortTermKey(amzDate: string, expiresSec: number): string {
@@ -122,6 +122,31 @@ d2('cli save/token', () => {
     } finally {
       process.stderr.write = origErrWrite
     }
+  })
+
+  i2('save custom moves the token to the keychain and strips the plaintext copy from settings', async () => {
+    const p = paths(process.env, 'linux')
+    mkdirSync(dirname(p.settingsFile), { recursive: true })
+    writeFileSync(p.settingsFile, JSON.stringify({
+      env: {
+        ANTHROPIC_BASE_URL: 'https://api.deepseek.com/anthropic',
+        ANTHROPIC_AUTH_TOKEN: 'sk-ds',
+        ANTHROPIC_MODEL: 'deepseek-v4-pro',
+      },
+    }))
+    const code = await runCli(['save', 'ds', '--type', 'custom'], { platform: 'linux' })
+    e2(code).toBe(0)
+    e2(await getSec('ds', 'linux', p)).toBe('sk-ds')
+
+    const prof = loadProf('ds', p)
+    e2(prof.env.ANTHROPIC_BASE_URL).toBe('https://api.deepseek.com/anthropic')
+    e2(prof.env.ANTHROPIC_MODEL).toBe('deepseek-v4-pro')
+
+    // The secret is in the keychain now; leaving a plaintext copy behind would
+    // survive a later switch and silently reroute the next profile.
+    const live = JSON.parse(readFileSync(p.settingsFile, 'utf8'))
+    e2(live.env.ANTHROPIC_AUTH_TOKEN).toBeUndefined()
+    e2(live.env.ANTHROPIC_BASE_URL).toBe('https://api.deepseek.com/anthropic')
   })
 
   i2('save login stores the credential hash on the profile', async () => {
