@@ -32,6 +32,7 @@ Nothing global changes. Different terminals can use different profiles simultane
 | login | `CLAUDE_CODE_OAUTH_TOKEN` |
 | bedrock | `CLAUDE_CODE_USE_BEDROCK`, `AWS_PROFILE`, `AWS_REGION` |
 | bedrock-key | `CLAUDE_CODE_USE_BEDROCK`, `AWS_BEARER_TOKEN_BEDROCK`, `AWS_REGION` |
+| custom | `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, any model overrides |
 
 If the profile has an isolated config dir, `CLAUDE_CONFIG_DIR` is also set.
 

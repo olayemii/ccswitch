@@ -7,8 +7,9 @@
 **📖 Docs & guide → https://olayemii.github.io/ccswitch/**
 
 Switch the active Claude Code account between any number of profiles —
-subscription logins, API keys, Bedrock (AWS credentials), and Bedrock API
-keys — across macOS, Windows, and Linux. Supports two modes:
+subscription logins, API keys, Bedrock (AWS credentials), Bedrock API keys,
+and custom Anthropic-compatible endpoints — across macOS, Windows, and Linux.
+Supports two modes:
 
 - **Global switch** — change the active account for the whole machine (CLI,
   desktop app, IDE extensions all follow it). One active account at a time.
@@ -40,13 +41,13 @@ ccswitch <name>             global switch directly
 ccswitch env <name>         print export statements for the current shell
 ccswitch env --unset        print unset statements to clear this shell
 ccswitch shellinit          print a shell function (ccuse) for convenience
-ccswitch save <name> --type <login|api-key|bedrock|bedrock-key>
+ccswitch save <name> --type <login|api-key|bedrock|bedrock-key|custom>
                             snapshot current live state into a profile
                             (--type is required; bedrock-key reads
                             $AWS_BEARER_TOKEN_BEDROCK from the environment)
 ccswitch add                guided setup (login / api-key / bedrock /
-                            bedrock-key; config isolation; optional token
-                            capture)
+                            bedrock-key / custom; config isolation; optional
+                            token capture)
 ccswitch help               overview of auth types and common commands
 ccswitch token <name>       capture a long-lived OAuth token (claude setup-token)
                             for a login profile, enabling per-shell on macOS
@@ -102,7 +103,8 @@ Active profile details:
 
 Fields shown depend on profile type:
 - **All types:** name, type, config directory (path or "(default)")
-- **api-key / bedrock-key:** `credential:` — a masked preview of the stored secret (first 6 characters + last 4 characters + total length; secrets under 12 characters show only the last 4 characters)
+- **api-key / bedrock-key / custom:** `credential:` — a masked preview of the stored secret (first 6 characters + last 4 characters + total length; secrets under 12 characters show only the last 4 characters)
+- **custom:** `base url:` — the endpoint the profile points at
 - **login:** `account:` (email — org, or email alone) and `token:` (captured N days ago (YYYY-MM-DD), or "present, capture date unknown", or "none captured")
 - **No active profile:** a single line: `No active profile.`
 
@@ -202,6 +204,46 @@ liveness probe that warns (never blocks) if the credentials look stale:
 ```bash
 ccswitch my-bedrock-profile --check
 ```
+
+## Custom Anthropic-compatible endpoints (`custom`)
+
+A `custom` profile points Claude Code at any Anthropic-compatible API —
+DeepSeek, Moonshot, OpenRouter, a self-hosted vLLM, or a corporate proxy. It
+sets `ANTHROPIC_BASE_URL` and authenticates with `ANTHROPIC_AUTH_TOKEN`. The
+`api-key` type can't do this: it always talks to `api.anthropic.com`.
+
+Create one with `ccswitch add` (choose **Custom Anthropic-compatible
+endpoint**), which prompts for the base URL, the token, and optional model
+overrides. Or snapshot what's already in `settings.json`:
+
+```bash
+ccswitch save deepseek --type custom
+```
+
+Because endpoints rarely use Anthropic's model names, a profile can pin its
+own via a comma-separated `KEY=value` list at the `add` prompt:
+
+```
+ANTHROPIC_MODEL=deepseek-v4-pro,ANTHROPIC_DEFAULT_HAIKU_MODEL=deepseek-v4-flash
+```
+
+Only `ANTHROPIC_MODEL`, `ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL` and
+`CLAUDE_CODE_SUBAGENT_MODEL` are accepted — anything else is rejected, so a
+typo can't inject arbitrary settings.
+
+The token lives in the OS secret store; the profile JSON holds only the base
+URL and model overrides. Global switch has the same **plaintext caveat** as
+`bedrock-key` — the token is written into `settings.json` while the profile is
+active. All of these keys are managed, so switching to another profile clears
+them; that matters more here than elsewhere, because a leftover
+`ANTHROPIC_BASE_URL` would send the next profile's credentials to this
+endpoint. `ccswitch doctor` reports that situation if a base URL or token ever
+reaches `settings.json` some way other than a switch.
+
+Two rough edges worth knowing: switching to a `custom` profile runs **no
+liveness probe** (endpoints vary too much for a shared health check), and
+`ccswitch refresh` is `bedrock-key`-only — rotate a custom token with
+`ccswitch add --force`.
 
 ## macOS keychain caveat
 
