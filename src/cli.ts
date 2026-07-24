@@ -300,6 +300,16 @@ export async function runCli(
         if (!token) throw new Error('No ANTHROPIC_AUTH_TOKEN in settings to snapshot.')
         await setSecret(name, token, plat, p)
         profile.env = { ANTHROPIC_BASE_URL: baseUrl, ...pickModelOverrides(e) }
+        // The token now lives in the secret store. Leaving the plaintext copy in
+        // settings.json would outlive a later switch — `switch` only clears keys
+        // it previously managed, and a hand-written token was never managed — so
+        // the next profile would silently authenticate against this endpoint.
+        delete settings.env.ANTHROPIC_AUTH_TOKEN
+        saveSettings(p.settingsFile, settings, nowIso())
+        process.stdout.write(
+          `Moved ANTHROPIC_AUTH_TOKEN out of settings.json into the secret store.\n` +
+          `Activate the profile to restore it: ccswitch ${name}\n`,
+        )
       } else {
         const settings = loadSettings(p.settingsFile)
         profile.env = {

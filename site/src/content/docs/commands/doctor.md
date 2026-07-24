@@ -24,9 +24,19 @@ Active profile details:
 ```
 
 Fields vary by type:
-- **api-key / bedrock-key:** masked credential preview
+- **api-key / bedrock-key / custom:** masked credential preview
 - **login:** account email/org, token capture date
 - **bedrock-key:** expiry countdown
+- **custom:** endpoint base URL
+
+## Custom endpoint leakage check
+
+Doctor also checks for custom-endpoint settings left behind while a *different* profile is active:
+
+- `ANTHROPIC_AUTH_TOKEN` present with a non-custom active profile → **error**. It overrides that profile's credentials.
+- `ANTHROPIC_BASE_URL` present with a non-custom active profile → **warn**. Its credentials would be sent to that endpoint. Harmless if you set it deliberately (a proxy); otherwise remove it and re-switch.
+
+This catches the case where a base URL or token reached `settings.json` some way other than a switch — a hand-edit, or a `save --type custom` on a profile that was never activated — since switching only clears keys it previously managed.
 
 ## Findings
 

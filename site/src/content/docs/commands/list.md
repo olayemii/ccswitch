@@ -23,6 +23,7 @@ $ ccswitch list
 * work (api-key)
   personal (login)  [stale token]
   bedrock-prod (bedrock-key)  [expires in 3h]
+  deepseek (custom)
 
 $ ccswitch current
 work

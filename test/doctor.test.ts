@@ -132,6 +132,43 @@ describe('diagnose', () => {
     }))
     expect(warns(fs).some((f) => /expired/i.test(f.message))).toBe(true)
   })
+
+  it('flags a stray ANTHROPIC_AUTH_TOKEN when the active profile is not custom', () => {
+    const profile: Profile = { name: 'work', type: 'login', env: {} }
+    const fs = diagnose(snap({
+      profiles: [profile],
+      active: { name: 'work', managedKeys: [] },
+      settings: { env: { ANTHROPIC_BASE_URL: 'https://api.deepseek.com/anthropic', ANTHROPIC_AUTH_TOKEN: 'sk-ds' } },
+      liveCredentialPresent: true,
+      profileStates: { work: { hasSecret: true, hasToken: false, configDirExists: false } },
+    }))
+    expect(errors(fs).some((f) => /ANTHROPIC_AUTH_TOKEN/.test(f.message))).toBe(true)
+  })
+
+  it('warns about a stray ANTHROPIC_BASE_URL alone, since it reroutes the credential', () => {
+    const profile: Profile = { name: 'work', type: 'login', env: {} }
+    const fs = diagnose(snap({
+      profiles: [profile],
+      active: { name: 'work', managedKeys: [] },
+      settings: { env: { ANTHROPIC_BASE_URL: 'https://api.deepseek.com/anthropic' } },
+      liveCredentialPresent: true,
+      profileStates: { work: { hasSecret: true, hasToken: false, configDirExists: false } },
+    }))
+    expect(errors(fs)).toHaveLength(0)
+    expect(warns(fs).some((f) => /ANTHROPIC_BASE_URL/.test(f.message))).toBe(true)
+  })
+
+  it('does not flag base url or auth token when the active profile is custom', () => {
+    const profile: Profile = { name: 'ds', type: 'custom', env: { ANTHROPIC_BASE_URL: 'https://api.deepseek.com/anthropic' } }
+    const fs = diagnose(snap({
+      profiles: [profile],
+      active: { name: 'ds', managedKeys: ['env.ANTHROPIC_BASE_URL', 'env.ANTHROPIC_AUTH_TOKEN'] },
+      settings: { env: { ANTHROPIC_BASE_URL: 'https://api.deepseek.com/anthropic', ANTHROPIC_AUTH_TOKEN: 'sk-ds' } },
+      profileStates: { ds: { hasSecret: true, hasToken: false, configDirExists: false } },
+    }))
+    expect(errors(fs)).toHaveLength(0)
+    expect(warns(fs)).toHaveLength(0)
+  })
 })
 
 describe('maskSecret', () => {

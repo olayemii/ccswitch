@@ -15,6 +15,8 @@ Replaces a `bedrock-key` profile's bearer token and re-derives its expiry, witho
 
 Use this when a short-lived Bedrock token has expired or is about to expire.
 
+`refresh` only applies to `bedrock-key`. To replace an `api-key` or `custom` profile's credential, re-run `ccswitch add --force` with the same profile name.
+
 ## Options
 
 | Option | Description |
