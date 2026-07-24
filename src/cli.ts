@@ -21,6 +21,14 @@ import { tokenStaleWarning } from './tokenAge.js'
 import { diagnose, describeActive, type DoctorSnapshot, type ProfileState } from './doctor.js'
 import { deriveBedrockKeyExpiry, describeBedrockExpiry, bedrockExpiredMessage, bedrockExpiringWarning, bedrockLivenessWarning } from './bedrockExpiry.js'
 import { probeAnthropicKey } from './anthropicLiveness.js'
+import { createRequire } from 'node:module'
+
+// Read the version from package.json rather than hardcoding it — a literal here
+// silently desynced from the package at the 0.2.0 release, so `--version`
+// reported 0.1.0. '../package.json' resolves correctly from both src/cli.ts in
+// development and dist/bin.js in the published package, where package.json sits
+// one level up from the bundle.
+export const VERSION: string = createRequire(import.meta.url)('../package.json').version
 
 function nowIso(): string {
   // Injected-free deterministic-ish timestamp; Date is allowed at runtime (not in workflow scripts).
@@ -61,7 +69,7 @@ export async function runCli(
   opts: { platform?: Platform; env?: NodeJS.ProcessEnv } = {},
 ): Promise<number> {
   const program = new Command()
-  program.name('ccswitch').version('0.1.0').exitOverride()
+  program.name('ccswitch').version(VERSION).exitOverride()
   const plat = opts.platform ?? getPlatform()
   const env = opts.env ?? process.env
   const p = paths(env, plat)
