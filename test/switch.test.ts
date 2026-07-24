@@ -69,6 +69,41 @@ describe('globalSwitch', () => {
     expect(t.deps.writeActive).not.toHaveBeenCalled()
   })
 
+  it('custom injects ANTHROPIC_BASE_URL + ANTHROPIC_AUTH_TOKEN, marks them managed, and neutralizes login', async () => {
+    const t = baseDeps({ getSecret: vi.fn().mockResolvedValue('sk-ds') })
+    await globalSwitch(
+      { name: 'ds', type: 'custom', env: { ANTHROPIC_BASE_URL: 'https://api.deepseek.com/anthropic', ANTHROPIC_MODEL: 'deepseek-v4-pro' } },
+      t.deps as any,
+    )
+    expect(t.savedRef().env.ANTHROPIC_BASE_URL).toBe('https://api.deepseek.com/anthropic')
+    expect(t.savedRef().env.ANTHROPIC_AUTH_TOKEN).toBe('sk-ds')
+    expect(t.savedRef().env.ANTHROPIC_MODEL).toBe('deepseek-v4-pro')
+    expect(t.deps.neutralizeLiveCredential).toHaveBeenCalled()
+    expect(t.deps.writeActive).toHaveBeenCalledWith(
+      { name: 'ds', managedKeys: expect.arrayContaining(['env.ANTHROPIC_BASE_URL', 'env.ANTHROPIC_AUTH_TOKEN', 'env.ANTHROPIC_MODEL']) },
+      t.paths,
+    )
+  })
+
+  it('custom throws when no token is stored and does not touch settings', async () => {
+    const t = baseDeps({ getSecret: vi.fn().mockResolvedValue(null) })
+    await expect(globalSwitch({ name: 'ds', type: 'custom', env: { ANTHROPIC_BASE_URL: 'https://x' } }, t.deps as any)).rejects.toThrow(/token/i)
+    expect(t.deps.saveSettings).not.toHaveBeenCalled()
+    expect(t.deps.writeActive).not.toHaveBeenCalled()
+  })
+
+  it('switching from a custom endpoint to a login clears its base url, token and model overrides', async () => {
+    const t = baseDeps({
+      readActive: vi.fn().mockReturnValue({ name: 'ds', managedKeys: ['env.ANTHROPIC_BASE_URL', 'env.ANTHROPIC_AUTH_TOKEN', 'env.ANTHROPIC_MODEL'] }),
+      loadProfile: vi.fn().mockReturnValue({ name: 'ds', type: 'custom', env: { ANTHROPIC_BASE_URL: 'https://api.deepseek.com/anthropic' } }),
+      loadSettings: vi.fn().mockReturnValue({ env: { ANTHROPIC_BASE_URL: 'https://api.deepseek.com/anthropic', ANTHROPIC_AUTH_TOKEN: 'sk-ds', ANTHROPIC_MODEL: 'deepseek-v4-pro' } }),
+    })
+    await globalSwitch({ name: 'work', type: 'login', env: {} }, t.deps as any)
+    expect(t.savedRef().env?.ANTHROPIC_BASE_URL).toBeUndefined()
+    expect(t.savedRef().env?.ANTHROPIC_AUTH_TOKEN).toBeUndefined()
+    expect(t.savedRef().env?.ANTHROPIC_MODEL).toBeUndefined()
+  })
+
   it('bedrock sets aws env and neutralizes login', async () => {
     const t = baseDeps()
     await globalSwitch({ name: 'bd', type: 'bedrock', env: { CLAUDE_CODE_USE_BEDROCK: '1', AWS_PROFILE: 'p', AWS_REGION: 'us-east-1' } }, t.deps as any)

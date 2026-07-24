@@ -1,4 +1,4 @@
-export type AuthType = 'login' | 'api-key' | 'bedrock' | 'bedrock-key'
+export type AuthType = 'login' | 'api-key' | 'bedrock' | 'bedrock-key' | 'custom'
 export type Platform = 'darwin' | 'win32' | 'linux'
 
 export interface Profile {
@@ -18,7 +18,7 @@ export interface ActiveState {
   managedKeys: string[]
 }
 
-const AUTH_TYPES: AuthType[] = ['login', 'api-key', 'bedrock', 'bedrock-key']
+const AUTH_TYPES: AuthType[] = ['login', 'api-key', 'bedrock', 'bedrock-key', 'custom']
 export function isAuthType(v: string): v is AuthType {
   return (AUTH_TYPES as string[]).includes(v)
 }

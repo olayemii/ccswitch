@@ -102,6 +102,17 @@ export async function globalSwitch(profile: Profile, deps: SwitchDeps): Promise<
       applyCredential = () => deps.neutralizeLiveCredential(deps.plat, deps.paths)
       break
     }
+    case 'custom': {
+      // Anthropic-compatible endpoint (DeepSeek, Moonshot, OpenRouter, vLLM…).
+      // profile.env carries ANTHROPIC_BASE_URL and any model overrides; the token
+      // is injected as ANTHROPIC_AUTH_TOKEN. Neutralize the live OAuth credential
+      // so the env-based auth wins cleanly.
+      const secret = await deps.getSecret(profile.name, deps.plat, deps.paths)
+      if (secret === null) throw new Error(`No stored token for profile '${profile.name}'.`)
+      desired = { env: { ...profile.env, ANTHROPIC_AUTH_TOKEN: secret }, apiKeyHelper: null }
+      applyCredential = () => deps.neutralizeLiveCredential(deps.plat, deps.paths)
+      break
+    }
   }
 
   // Apply the fragile credential step first. If this throws, nothing on disk

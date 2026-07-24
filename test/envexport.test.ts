@@ -37,6 +37,20 @@ describe('buildEnvExport', () => {
     expect(out).toContain("export AWS_BEARER_TOKEN_BEDROCK='brk'")
   })
 
+  it('custom exports base url, auth token, and model overrides', () => {
+    const out = buildEnvExport(
+      { name: 'ds', type: 'custom', env: { ANTHROPIC_BASE_URL: 'https://api.deepseek.com/anthropic', ANTHROPIC_MODEL: 'deepseek-v4-pro' } },
+      'sk-ds',
+    )
+    expect(out).toContain("export ANTHROPIC_BASE_URL='https://api.deepseek.com/anthropic'")
+    expect(out).toContain("export ANTHROPIC_AUTH_TOKEN='sk-ds'")
+    expect(out).toContain("export ANTHROPIC_MODEL='deepseek-v4-pro'")
+  })
+
+  it('custom without a stored token throws', () => {
+    expect(() => buildEnvExport({ name: 'ds', type: 'custom', env: { ANTHROPIC_BASE_URL: 'https://x' } }, null)).toThrow(/token/i)
+  })
+
   it('login with token exports CLAUDE_CODE_OAUTH_TOKEN', () => {
     const out = buildEnvExport({ name: 'l', type: 'login', env: {}, hasToken: true }, 'oauth-xyz')
     expect(out).toBe("export CLAUDE_CODE_OAUTH_TOKEN='oauth-xyz'")
@@ -60,7 +74,7 @@ describe('buildEnvExport', () => {
 describe('buildEnvUnset', () => {
   it('unsets every managed key', () => {
     const out = buildEnvUnset()
-    for (const k of ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN', 'CLAUDE_CODE_USE_BEDROCK', 'AWS_PROFILE', 'AWS_REGION', 'AWS_BEARER_TOKEN_BEDROCK', 'CLAUDE_CONFIG_DIR']) {
+    for (const k of ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_BASE_URL', 'ANTHROPIC_MODEL', 'CLAUDE_CODE_OAUTH_TOKEN', 'CLAUDE_CODE_USE_BEDROCK', 'AWS_PROFILE', 'AWS_REGION', 'AWS_BEARER_TOKEN_BEDROCK', 'CLAUDE_CONFIG_DIR']) {
       expect(out).toContain(`unset ${k}`)
     }
   })
