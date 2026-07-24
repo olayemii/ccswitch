@@ -7,7 +7,13 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Publishing used to run the build but never the tests, so a broken suite
+  # could ship. Reuses the same matrix the PR checks run.
+  test:
+    uses: ./.github/workflows/test.yml
+
   publish:
+    needs: test
     runs-on: ubuntu-latest
     permissions:
       contents: write # required to create the GitHub Release
