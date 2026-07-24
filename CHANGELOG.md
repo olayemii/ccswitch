@@ -5,6 +5,16 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-07-24
+
+### Fixed
+
+- `ccswitch --version` reported `0.1.0` on the 0.2.0 release. The version was a
+  hardcoded literal in `src/cli.ts` and silently desynced from `package.json` at
+  the version bump. It is now read from `package.json` at runtime, which
+  resolves correctly from both the source tree and the published bundle, and a
+  test pins the two together so they cannot drift again.
+
 ## [0.2.0] - 2026-07-24
 
 ### Added
@@ -81,5 +91,6 @@ Initial release.
   `CLAUDE_CONFIG_DIR`.
 
 [#1]: https://github.com/olayemii/ccswitch/pull/1
+[0.2.1]: https://github.com/olayemii/ccswitch/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/olayemii/ccswitch/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/olayemii/ccswitch/releases/tag/v0.1.0

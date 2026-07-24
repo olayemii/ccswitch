@@ -1,6 +1,6 @@
 {
   "name": "@olayemii/ccswitch",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Switch between Claude Code accounts and profiles (login, API key, Bedrock, custom Anthropic-compatible endpoints) globally or per-shell, with expiry tracking and liveness probes.",
   "type": "module",
   "bin": { "ccswitch": "dist/bin.js" },
